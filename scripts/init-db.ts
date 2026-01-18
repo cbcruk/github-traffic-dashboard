@@ -1,14 +1,10 @@
-import { createClient } from '@libsql/client'
-import { join } from 'path'
-
-const DB_PATH = join(process.cwd(), 'data', 'traffic.db')
+import 'dotenv/config'
+import { getDbClient } from '../src/lib/db'
 
 async function main(): Promise<void> {
-  console.log(`Initializing database at ${DB_PATH}...`)
+  console.log('Initializing Turso database...')
 
-  const client = createClient({
-    url: `file:${DB_PATH}`,
-  })
+  const client = getDbClient()
 
   await client.execute(`
     CREATE TABLE IF NOT EXISTS daily_traffic (

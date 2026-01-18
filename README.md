@@ -16,7 +16,7 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 - [TanStack Router](https://tanstack.com/router) - Type-safe routing
 - [shadcn/ui](https://ui.shadcn.com) - UI components
 - [Recharts](https://recharts.org) - Charts
-- [libSQL](https://github.com/tursodatabase/libsql) - SQLite database
+- [Turso](https://turso.tech) - Edge SQLite database
 - [Tailwind CSS v4](https://tailwindcss.com) - Styling
 
 ## Getting Started
@@ -38,18 +38,28 @@ pnpm install
 cp .env.example .env
 ```
 
-`.env` 파일에 GitHub Personal Access Token 설정:
+`.env` 파일에 환경 변수 설정:
 
 ```
+# Turso Database
+TURSO_DATABASE_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=your-auth-token
+
+# GitHub Token
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 ```
 
-> Token은 `repo` scope가 필요합니다. [GitHub Settings](https://github.com/settings/tokens)에서 생성하세요.
+> - Turso 데이터베이스는 [turso.tech](https://turso.tech)에서 무료로 생성 가능
+> - GitHub Token은 `repo` scope가 필요합니다. [GitHub Settings](https://github.com/settings/tokens)에서 생성
 
 ### Database Setup
 
 ```bash
-# 데이터베이스 초기화
+# Turso CLI로 데이터베이스 생성
+turso db create github-traffic
+turso db tokens create github-traffic
+
+# 테이블 초기화
 pnpm db:init
 
 # 트래픽 데이터 수집
@@ -73,7 +83,7 @@ http://localhost:3000 에서 확인
 | `pnpm preview`    | 빌드 미리보기                     |
 | `pnpm test`       | 테스트 실행                       |
 | `pnpm format`     | Prettier 포맷 적용                |
-| `pnpm db:init`    | SQLite 데이터베이스 초기화        |
+| `pnpm db:init`    | Turso 데이터베이스 테이블 초기화  |
 | `pnpm db:collect` | GitHub API에서 트래픽 데이터 수집 |
 
 ## GitHub Actions
@@ -82,26 +92,37 @@ http://localhost:3000 에서 확인
 
 ### Setup
 
-1. Repository Settings > Secrets에 `TRAFFIC_GITHUB_TOKEN` 추가
-2. Actions 탭에서 워크플로우 활성화
+Repository Settings > Secrets에 다음 시크릿 추가:
+
+- `TRAFFIC_GITHUB_TOKEN` - GitHub Personal Access Token
+- `TURSO_DATABASE_URL` - Turso 데이터베이스 URL
+- `TURSO_AUTH_TOKEN` - Turso 인증 토큰
 
 수동 실행: Actions > Collect Traffic Data > Run workflow
 
 ## Project Structure
 
 ```
-├── data/
-│   └── traffic.db          # SQLite 데이터베이스
 ├── scripts/
 │   ├── init-db.ts          # DB 초기화 스크립트
 │   └── collect-traffic.ts  # 데이터 수집 스크립트
 ├── src/
 │   ├── components/         # React 컴포넌트
-│   ├── lib/                # 유틸리티 및 API
+│   ├── lib/                # 유틸리티 및 DB 클라이언트
 │   └── routes/             # 페이지 라우트
 └── .github/
     └── workflows/          # GitHub Actions
 ```
+
+## Deployment
+
+### Vercel
+
+1. Vercel 프로젝트 생성
+2. Environment Variables에 Turso 환경 변수 추가:
+   - `TURSO_DATABASE_URL`
+   - `TURSO_AUTH_TOKEN`
+3. Deploy
 
 ## License
 

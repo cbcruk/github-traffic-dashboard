@@ -1,8 +1,7 @@
-import { createClient } from '@libsql/client'
-import { join } from 'path'
+import 'dotenv/config'
+import { getDbClient } from '../src/lib/db'
 
 const GITHUB_API_BASE = 'https://api.github.com'
-const DB_PATH = join(process.cwd(), 'data', 'traffic.db')
 
 interface Repository {
   full_name: string
@@ -96,9 +95,7 @@ async function fetchRepoTraffic(repo: string): Promise<{
 async function main(): Promise<void> {
   console.log('Starting traffic data collection...')
 
-  const client = createClient({
-    url: `file:${DB_PATH}`,
-  })
+  const client = getDbClient()
 
   const repos = await getMyRepos()
   console.log(`Found ${repos.length} repositories`)

@@ -1,27 +1,11 @@
 import { createServerFn } from '@tanstack/react-start'
-import { createClient } from '@libsql/client'
-import { existsSync } from 'fs'
-import { join } from 'path'
+import { getDbClient } from './db'
 import type { RepoTraffic, DailyTraffic } from './github.types'
-
-function getDbClient() {
-  const dbPath = join(process.cwd(), 'data', 'traffic.db')
-  if (!existsSync(dbPath)) return null
-
-  return createClient({
-    url: `file:${dbPath}`,
-  })
-}
 
 export const getAllReposTraffic = createServerFn().handler(
   async (): Promise<RepoTraffic[]> => {
-    const client = getDbClient()
-    if (!client) {
-      console.log('Database not found, returning empty data')
-      return []
-    }
-
     try {
+      const client = getDbClient()
       const result = await client.execute(`
         SELECT
           repo,
@@ -104,13 +88,8 @@ export const getAllReposTraffic = createServerFn().handler(
 
 export const getHistoricalTraffic = createServerFn().handler(
   async (): Promise<DailyTraffic[]> => {
-    const client = getDbClient()
-    if (!client) {
-      console.log('Database not found, returning empty historical data')
-      return []
-    }
-
     try {
+      const client = getDbClient()
       const result = await client.execute(`
         SELECT repo, date, views, visitors, clones, clone_uniques as cloneUniques
         FROM daily_traffic
