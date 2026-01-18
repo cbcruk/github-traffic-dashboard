@@ -33,11 +33,22 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
 })
 
+const themeScript = `
+  (function() {
+    const stored = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (stored === 'dark' || (!stored && prefersDark)) {
+      document.documentElement.classList.add('dark')
+    }
+  })()
+`
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
         {children}
