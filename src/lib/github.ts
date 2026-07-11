@@ -57,13 +57,19 @@ export const getAllReposTraffic = createServerFn().handler(
         })
       }
 
-      // Fetch referrers
+      // Fetch referrers.
+      // GitHub's referrers endpoint already returns a rolling 14-day snapshot,
+      // so each collected row is a full aggregate — summing multiple days would
+      // multiply the counts. Use only the most recent snapshot per repo.
       const referrersResult = await client.execute(`
-        SELECT repo, referrer, SUM(count) as count, SUM(uniques) as uniques
-        FROM referrers
-        WHERE date >= date('now', '-14 days')
-        GROUP BY repo, referrer
-        ORDER BY count DESC
+        SELECT r.repo, r.referrer, r.count, r.uniques
+        FROM referrers r
+        INNER JOIN (
+          SELECT repo, MAX(date) AS max_date
+          FROM referrers
+          GROUP BY repo
+        ) latest ON r.repo = latest.repo AND r.date = latest.max_date
+        ORDER BY r.count DESC
       `)
 
       for (const row of referrersResult.rows) {

@@ -15,10 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  filterAndSortRepos,
+  sortOptions,
+  type SortOption,
+} from '../lib/traffic-utils'
 import type { RepoTraffic } from '../lib/github.types'
-
-const sortOptions = ['views', 'visitors', 'clones', 'name'] as const
-type SortOption = (typeof sortOptions)[number]
 
 interface SearchParams {
   q?: string
@@ -70,35 +72,10 @@ function Dashboard() {
     })
   }
 
-  const filteredAndSortedData = useMemo(() => {
-    let data = [...trafficData]
-
-    if (search) {
-      const query = search.toLowerCase()
-      data = data.filter((t) => t.repo.toLowerCase().includes(query))
-    }
-
-    if (!showEmpty) {
-      data = data.filter((t) => t.views.uniques > 0)
-    }
-
-    data.sort((a, b) => {
-      switch (sortBy) {
-        case 'views':
-          return b.views.count - a.views.count
-        case 'visitors':
-          return b.views.uniques - a.views.uniques
-        case 'clones':
-          return b.clones.count - a.clones.count
-        case 'name':
-          return a.repo.localeCompare(b.repo)
-        default:
-          return 0
-      }
-    })
-
-    return data
-  }, [trafficData, search, sortBy, showEmpty])
+  const filteredAndSortedData = useMemo(
+    () => filterAndSortRepos(trafficData, { search, sortBy, showEmpty }),
+    [trafficData, search, sortBy, showEmpty],
+  )
 
   const totalViews = trafficData.reduce((sum, t) => sum + t.views.count, 0)
   const totalUniques = trafficData.reduce((sum, t) => sum + t.views.uniques, 0)

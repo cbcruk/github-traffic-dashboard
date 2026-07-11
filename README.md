@@ -86,19 +86,28 @@ http://localhost:3000 에서 확인
 | `pnpm db:init`    | Turso 데이터베이스 테이블 초기화  |
 | `pnpm db:collect` | GitHub API에서 트래픽 데이터 수집 |
 
-## GitHub Actions
+## Data Collection (Vercel Cron)
 
-매일 UTC 00:00에 자동으로 트래픽 데이터를 수집합니다.
+매일 UTC 00:00에 Vercel Cron이 `/api/collect` 엔드포인트를 호출해 트래픽 데이터를 자동 수집합니다.
+
+> GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화되기 때문에, 스케줄 수집은 Vercel Cron으로 운영합니다.
 
 ### Setup
 
-Repository Settings > Secrets에 다음 시크릿 추가:
+Vercel 프로젝트의 Environment Variables에 다음을 추가:
 
-- `TRAFFIC_GITHUB_TOKEN` - GitHub Personal Access Token
+- `GITHUB_TOKEN` - GitHub Personal Access Token (`repo` scope)
 - `TURSO_DATABASE_URL` - Turso 데이터베이스 URL
 - `TURSO_AUTH_TOKEN` - Turso 인증 토큰
+- `CRON_SECRET` - `/api/collect` 보호용 랜덤 문자열 (`openssl rand -hex 32`)
 
-수동 실행: Actions > Collect Traffic Data > Run workflow
+스케줄은 [`vercel.json`](./vercel.json)의 `crons`에 정의되어 있습니다. Vercel 무료(Hobby) 플랜은 **하루 1회, UTC 기준** cron을 지원하므로 현재 설정과 일치합니다.
+
+> Hobby 플랜 함수 실행 시간 제한(최대 60초) 때문에 레포 수가 매우 많으면 수집이 중간에 끊길 수 있습니다. 그럴 경우 Pro 플랜이나 아래 수동 워크플로우를 사용하세요.
+
+### 수동 수집 (fallback)
+
+GitHub Actions에 `workflow_dispatch` 전용 워크플로우가 남아 있습니다: Actions > Collect Traffic Data > Run workflow. 이 경우 Repository Secrets에 `TRAFFIC_GITHUB_TOKEN`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`이 필요합니다.
 
 ## Project Structure
 
@@ -119,10 +128,12 @@ Repository Settings > Secrets에 다음 시크릿 추가:
 ### Vercel
 
 1. Vercel 프로젝트 생성
-2. Environment Variables에 Turso 환경 변수 추가:
+2. Environment Variables 추가:
    - `TURSO_DATABASE_URL`
    - `TURSO_AUTH_TOKEN`
-3. Deploy
+   - `GITHUB_TOKEN` (트래픽 수집용 PAT)
+   - `CRON_SECRET` (`/api/collect` 보호용)
+3. Deploy — `vercel.json`의 cron이 배포와 함께 자동 등록됩니다.
 
 ## License
 
