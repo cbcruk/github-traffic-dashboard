@@ -51,17 +51,27 @@ function getHeaders(): HeadersInit {
 
 async function getMyRepos(): Promise<Repository[]> {
   const headers = getHeaders()
-  const res = await fetch(
-    `${GITHUB_API_BASE}/user/repos?per_page=100&sort=updated&affiliation=owner`,
-    { headers },
-  )
+  const perPage = 100
+  const allRepos: Repository[] = []
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch repos: ${res.status} ${res.statusText}`)
+  for (let page = 1; ; page++) {
+    const res = await fetch(
+      `${GITHUB_API_BASE}/user/repos?per_page=${perPage}&page=${page}&sort=updated&affiliation=owner`,
+      { headers },
+    )
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch repos: ${res.status} ${res.statusText}`)
+    }
+
+    const repos: Repository[] = await res.json()
+    allRepos.push(...repos)
+
+    // Last page reached when fewer than a full page is returned.
+    if (repos.length < perPage) break
   }
 
-  const repos: Repository[] = await res.json()
-  return repos.filter((repo) => !repo.fork)
+  return allRepos.filter((repo) => !repo.fork)
 }
 
 async function fetchRepoTraffic(repo: string): Promise<{
