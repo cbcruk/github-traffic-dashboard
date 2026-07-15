@@ -15,9 +15,9 @@
     "format:check": "prettier --check .",
     "db:init": "tsx scripts/init-db.ts",
     "db:collect": "tsx scripts/collect-traffic.ts",
-    "worker:dev": "wrangler dev --config worker/wrangler.toml",
-    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
-    "worker:tail": "wrangler tail --config worker/wrangler.toml"
+    "deploy": "vite build && wrangler deploy",
+    "cf:preview": "vite build && wrangler dev",
+    "cf:tail": "wrangler tail"
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",

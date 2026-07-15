@@ -86,36 +86,13 @@ http://localhost:3000 에서 확인
 | `pnpm db:init`    | Turso 데이터베이스 테이블 초기화  |
 | `pnpm db:collect` | GitHub API에서 트래픽 데이터 수집 |
 
-## Data Collection (Cloudflare Workers Cron)
+## Data Collection (Cloudflare Cron)
 
-매일 UTC 00:00에 Cloudflare Worker의 cron 트리거가 GitHub API에서 트래픽을 수집해 Turso에 저장합니다. 데이터 수집은 웹앱(Vercel)과 분리되어 있어, Vercel은 대시보드 조회 전용입니다.
+대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 매일 UTC 00:00에 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 GitHub API에서 트래픽을 수집해 Turso에 저장합니다.
 
 > GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화됩니다. Cloudflare cron 트리거에는 이 제한이 없습니다.
 
-### Setup
-
-```bash
-# 1. Cloudflare 로그인
-npx wrangler login
-
-# 2. Worker 시크릿 등록 (worker/wrangler.toml 기준)
-npx wrangler secret put GITHUB_TOKEN       --config worker/wrangler.toml
-npx wrangler secret put TURSO_DATABASE_URL --config worker/wrangler.toml
-npx wrangler secret put TURSO_AUTH_TOKEN   --config worker/wrangler.toml
-
-# 3. 배포 (cron 트리거가 함께 등록됨)
-pnpm worker:deploy
-```
-
-수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, Worker([`worker/index.ts`](./worker/index.ts))와 CLI 스크립트가 이를 공유합니다. 스케줄은 [`worker/wrangler.toml`](./worker/wrangler.toml)의 `[triggers] crons`에 정의되어 있습니다.
-
-| Script               | Description                   |
-| -------------------- | ----------------------------- |
-| `pnpm worker:dev`    | 로컬에서 Worker 실행 (테스트) |
-| `pnpm worker:deploy` | Worker 배포 + cron 등록       |
-| `pnpm worker:tail`   | 배포된 Worker 실시간 로그     |
-
-> 배포 후 즉시 확인하려면 Worker의 HTTP 엔드포인트를 호출하거나(수동 실행 지원), Cloudflare 대시보드 > Workers > Triggers에서 cron을 확인하세요.
+수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. cron 스케줄과 Cloudflare 프리셋은 [`vite.config.ts`](./vite.config.ts)의 Nitro 설정(`cloudflare.wrangler.triggers`)에 정의됩니다.
 
 ### 수동 수집 (fallback)
 
@@ -127,12 +104,10 @@ GitHub Actions에 `workflow_dispatch` 전용 워크플로우가 남아 있습니
 ├── scripts/
 │   ├── init-db.ts          # DB 초기화 스크립트
 │   └── collect-traffic.ts  # 데이터 수집 CLI
-├── worker/
-│   ├── index.ts            # Cloudflare Worker (cron 수집)
-│   └── wrangler.toml       # Worker 설정 + cron 스케줄
 ├── src/
 │   ├── components/         # React 컴포넌트
 │   ├── lib/                # 유틸리티, DB 클라이언트, 수집 로직
+│   ├── nitro/              # Nitro 서버 플러그인 (cron 수집)
 │   └── routes/             # 페이지 라우트
 └── .github/
     └── workflows/          # GitHub Actions (수동 fallback)
@@ -140,17 +115,29 @@ GitHub Actions에 `workflow_dispatch` 전용 워크플로우가 남아 있습니
 
 ## Deployment
 
-### Vercel (대시보드)
+앱과 cron이 하나의 Cloudflare Worker로 함께 배포됩니다.
 
-웹앱은 Turso를 읽어 대시보드를 렌더링하기만 합니다. 데이터 수집은 Cloudflare Worker가 담당하므로 Vercel에는 수집용 시크릿이 필요 없습니다.
+```bash
+# 1. Cloudflare 로그인
+npx wrangler login
 
-1. Vercel 프로젝트 생성
-2. Environment Variables 추가:
-   - `TURSO_DATABASE_URL`
-   - `TURSO_AUTH_TOKEN`
-3. Deploy
+# 2. 시크릿 등록 (빌드 후 생성되는 Worker에 적용됨)
+pnpm build
+npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put TURSO_DATABASE_URL
+npx wrangler secret put TURSO_AUTH_TOKEN
 
-데이터 수집(Cloudflare Worker) 설정은 위 [Data Collection](#data-collection-cloudflare-workers-cron) 섹션을 참고하세요.
+# 3. 빌드 + 배포 (cron 트리거가 함께 등록됨)
+pnpm deploy
+```
+
+| Script            | Description                           |
+| ----------------- | ------------------------------------- |
+| `pnpm deploy`     | 빌드 후 Cloudflare에 배포 (cron 포함) |
+| `pnpm cf:preview` | 로컬에서 빌드된 Worker 미리보기       |
+| `pnpm cf:tail`    | 배포된 Worker 실시간 로그             |
+
+> 배포 후 Cloudflare 대시보드 > Workers > 해당 Worker > Settings > Triggers에서 cron 등록을 확인할 수 있습니다. `GITHUB_TOKEN`은 `repo` scope PAT여야 합니다.
 
 ## License
 

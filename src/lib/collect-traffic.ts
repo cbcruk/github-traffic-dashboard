@@ -1,4 +1,4 @@
-import { getDbClient } from './db'
+import { getDbClient, type DbConfig } from './db'
 
 const GITHUB_API_BASE = 'https://api.github.com'
 
@@ -42,13 +42,13 @@ export interface CollectOptions {
   log?: (message: string) => void
   /** Delay between repos in ms to ease GitHub rate limits. Defaults to 100. */
   delayMs?: number
+  /** GitHub token. Falls back to process.env.GITHUB_TOKEN. */
+  githubToken?: string
+  /** Turso connection. Falls back to process.env.TURSO_*. */
+  turso?: DbConfig
 }
 
-function getHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    throw new Error('GITHUB_TOKEN environment variable is not set')
-  }
+function buildHeaders(token: string): HeadersInit {
   return {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github.v3+json',
@@ -58,8 +58,7 @@ function getHeaders(): HeadersInit {
   }
 }
 
-async function getMyRepos(): Promise<Repository[]> {
-  const headers = getHeaders()
+async function getMyRepos(headers: HeadersInit): Promise<Repository[]> {
   const perPage = 100
   const allRepos: Repository[] = []
 
@@ -83,13 +82,14 @@ async function getMyRepos(): Promise<Repository[]> {
   return allRepos.filter((repo) => !repo.fork)
 }
 
-async function fetchRepoTraffic(repo: string): Promise<{
+async function fetchRepoTraffic(
+  repo: string,
+  headers: HeadersInit,
+): Promise<{
   views: ViewsResponse
   clones: ClonesResponse
   referrers: Referrer[]
 }> {
-  const headers = getHeaders()
-
   const [viewsRes, clonesRes, referrersRes] = await Promise.all([
     fetch(`${GITHUB_API_BASE}/repos/${repo}/traffic/views`, { headers }),
     fetch(`${GITHUB_API_BASE}/repos/${repo}/traffic/clones`, { headers }),
@@ -114,8 +114,11 @@ async function fetchRepoTraffic(repo: string): Promise<{
 /**
  * Fetch traffic for every owned (non-fork) repository and upsert it into Turso.
  *
- * Shared by the CLI collector (`scripts/collect-traffic.ts`) and the
- * `/api/collect` server route driven by Vercel Cron.
+ * Shared by the CLI collector (`scripts/collect-traffic.ts`) and the Nitro
+ * scheduled plugin (`src/nitro/scheduled.ts`) driven by Cloudflare cron.
+ *
+ * Credentials come from `options`, falling back to `process.env` — the
+ * Cloudflare hook passes them explicitly so no `process.env` is required there.
  */
 export async function collectTraffic(
   options: CollectOptions = {},
@@ -123,9 +126,15 @@ export async function collectTraffic(
   const log = options.log ?? (() => {})
   const delayMs = options.delayMs ?? 100
 
-  const client = getDbClient()
+  const token = options.githubToken ?? process.env.GITHUB_TOKEN
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is not set')
+  }
+  const headers = buildHeaders(token)
 
-  const repos = await getMyRepos()
+  const client = getDbClient(options.turso)
+
+  const repos = await getMyRepos(headers)
   log(`Found ${repos.length} repositories`)
 
   const today = new Date().toISOString().split('T')[0]
@@ -137,6 +146,7 @@ export async function collectTraffic(
       log(`Fetching traffic for ${repo.full_name}...`)
       const { views, clones, referrers } = await fetchRepoTraffic(
         repo.full_name,
+        headers,
       )
 
       // Store daily view/clone data
