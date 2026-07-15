@@ -15,7 +15,32 @@ const config = defineConfig({
   },
   plugins: [
     devtools(),
-    nitro(),
+    nitro({
+      // Deploy target: Cloudflare Workers.
+      preset: 'cloudflare_module',
+      // Server plugin that runs traffic collection on the cron trigger.
+      plugins: [
+        fileURLToPath(new URL('./src/nitro/scheduled.ts', import.meta.url)),
+      ],
+      // @libsql/client pulls in cross-fetch -> node-fetch, whose node:http path
+      // crashes on workerd. Force it to the runtime's native fetch.
+      alias: {
+        'cross-fetch': fileURLToPath(
+          new URL('./src/nitro/native-fetch.ts', import.meta.url),
+        ),
+      },
+      cloudflare: {
+        deployConfig: true,
+        nodeCompat: true,
+        wrangler: {
+          // Daily at 00:00 UTC. Cloudflare cron triggers are not disabled by
+          // repository inactivity (unlike GitHub Actions schedules).
+          triggers: {
+            crons: ['0 0 * * *'],
+          },
+        },
+      },
+    }),
     tailwindcss(),
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],
