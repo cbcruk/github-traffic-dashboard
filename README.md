@@ -128,12 +128,14 @@ npx wrangler secret put TURSO_DATABASE_URL
 npx wrangler secret put TURSO_AUTH_TOKEN
 
 # 3. 빌드 + 배포 (cron 트리거가 함께 등록됨)
-pnpm deploy
+pnpm run deploy
 ```
+
+> `pnpm deploy`는 pnpm 내장 명령과 충돌하므로 반드시 `pnpm run deploy`로 실행하세요.
 
 | Script            | Description                           |
 | ----------------- | ------------------------------------- |
-| `pnpm deploy`     | 빌드 후 Cloudflare에 배포 (cron 포함) |
+| `pnpm run deploy` | 빌드 후 Cloudflare에 배포 (cron 포함) |
 | `pnpm cf:preview` | 로컬에서 빌드된 Worker 미리보기       |
 | `pnpm cf:tail`    | 배포된 Worker 실시간 로그             |
 
