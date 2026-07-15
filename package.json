@@ -14,7 +14,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:init": "tsx scripts/init-db.ts",
-    "db:collect": "tsx scripts/collect-traffic.ts"
+    "db:collect": "tsx scripts/collect-traffic.ts",
+    "worker:dev": "wrangler dev --config worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "worker:tail": "wrangler tail --config worker/wrangler.toml"
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",
@@ -39,6 +42,7 @@
     "vite-tsconfig-paths": "^6.0.2"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260715.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/devtools-vite": "^0.3.11",
     "@testing-library/dom": "^10.4.0",
@@ -56,6 +60,7 @@
     "typescript": "^5.7.2",
     "vite": "^7.1.7",
     "vitest": "^3.0.5",
-    "web-vitals": "^5.1.0"
+    "web-vitals": "^5.1.0",
+    "wrangler": "^4.110.0"
   }
 }

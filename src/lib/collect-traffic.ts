@@ -52,6 +52,9 @@ function getHeaders(): HeadersInit {
   return {
     Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github.v3+json',
+    // GitHub requires a User-Agent on every request; some edge runtimes
+    // (e.g. Cloudflare Workers) don't send a default one, causing 403s.
+    'User-Agent': 'github-traffic-dashboard',
   }
 }
 
