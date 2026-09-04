@@ -1,61 +1,30 @@
 import { Moon, Sun } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-
-type Theme = 'light' | 'dark'
-
-function getInitialTheme(): Theme {
-  if (typeof window === 'undefined') return 'light'
-
-  const stored = localStorage.getItem('theme') as Theme | null
-  if (stored) return stored
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light'
-}
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { useThemeMode } from '../theme-provider'
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>('light')
-  const [mounted, setMounted] = useState(false)
+  const { resolvedMode, setMode, isReady } = useThemeMode()
 
-  useEffect(() => {
-    setMounted(true)
-    setTheme(getInitialTheme())
-  }, [])
-
-  useEffect(() => {
-    if (!mounted) return
-
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-    localStorage.setItem('theme', theme)
-  }, [theme, mounted])
-
-  function toggleTheme(): void {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
-  }
-
-  if (!mounted) {
+  if (!isReady) {
     return (
-      <Button variant="ghost" size="icon" disabled>
-        <Sun className="h-5 w-5" />
-      </Button>
+      <IconButton
+        label="Toggle theme"
+        variant="ghost"
+        icon={<Sun aria-hidden />}
+        isDisabled
+      />
     )
   }
 
+  const isDark = resolvedMode === 'dark'
+
   return (
-    <Button variant="ghost" size="icon" onClick={toggleTheme}>
-      {theme === 'light' ? (
-        <Moon className="h-5 w-5" />
-      ) : (
-        <Sun className="h-5 w-5" />
-      )}
-      <span className="sr-only">Toggle theme</span>
-    </Button>
+    <IconButton
+      label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+      tooltip={isDark ? 'Light theme' : 'Dark theme'}
+      variant="ghost"
+      icon={isDark ? <Sun aria-hidden /> : <Moon aria-hidden />}
+      onClick={() => setMode(isDark ? 'light' : 'dark')}
+    />
   )
 }

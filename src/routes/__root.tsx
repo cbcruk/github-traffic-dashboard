@@ -1,6 +1,9 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import { LinkProvider } from '@astryxdesign/core/Link'
+import { ThemeProvider } from '../components/theme-provider'
+import { RouterLink } from '../components/router-link'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
@@ -33,13 +36,21 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
 })
 
+/*
+ * Applies the stored color mode before first paint. Astryx <Theme> takes over
+ * on hydration and writes the same attributes, so this only covers the gap
+ * between HTML parse and hydration. Without a stored preference the attribute
+ * is left off and Astryx follows the OS via `color-scheme: light dark`.
+ */
 const themeScript = `
   (function() {
-    const stored = localStorage.getItem('theme')
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    if (stored === 'dark' || (!stored && prefersDark)) {
-      document.documentElement.classList.add('dark')
-    }
+    try {
+      var stored = localStorage.getItem('theme')
+      if (stored === 'dark' || stored === 'light') {
+        document.documentElement.setAttribute('data-theme', stored)
+      }
+      document.documentElement.setAttribute('data-astryx-theme', 'neutral')
+    } catch (e) {}
   })()
 `
 
@@ -51,7 +62,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body>
-        {children}
+        <ThemeProvider>
+          <LinkProvider component={RouterLink}>{children}</LinkProvider>
+        </ThemeProvider>
         <TanStackDevtools
           config={{
             position: 'bottom-right',

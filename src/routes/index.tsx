@@ -1,26 +1,35 @@
 import { useMemo } from 'react'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { History, Search } from 'lucide-react'
+import { Card } from '@astryxdesign/core/Card'
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Grid } from '@astryxdesign/core/Grid'
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { Icon } from '@astryxdesign/core/Icon'
+import { Layout, LayoutContent } from '@astryxdesign/core/Layout'
+import { Link } from '@astryxdesign/core/Link'
+import { Selector } from '@astryxdesign/core/Selector'
+import { Text } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { VStack } from '@astryxdesign/core/VStack'
 import { getAllReposTraffic } from '../lib/github'
 import { RepoTrafficCard } from '../components/repo-traffic-card'
 import { ThemeToggle } from '../components/theme-toggle'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   filterAndSortRepos,
   sortOptions,
   type SortOption,
 } from '../lib/traffic-utils'
 import type { RepoTraffic } from '../lib/github.types'
+
+const sortSelectorOptions = [
+  { value: 'views', label: 'Views' },
+  { value: 'visitors', label: 'Visitors' },
+  { value: 'clones', label: 'Clones' },
+  { value: 'name', label: 'Name' },
+]
 
 interface SearchParams {
   q?: string
@@ -46,6 +55,19 @@ export const Route = createFileRoute('/')({
   },
   component: Dashboard,
 })
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <Card>
+      <VStack gap={2}>
+        <Text type="supporting">{label}</Text>
+        <Text size="3xl" weight="bold" hasTabularNumbers>
+          {value.toLocaleString()}
+        </Text>
+      </VStack>
+    </Card>
+  )
+}
 
 function Dashboard() {
   const trafficData = Route.useLoaderData()
@@ -82,122 +104,83 @@ function Dashboard() {
   const totalClones = trafficData.reduce((sum, t) => sum + t.clones.count, 0)
 
   return (
-    <div className="mx-auto max-w-7xl p-6 md:p-8">
-      <header className="mb-8 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            GitHub Traffic Dashboard
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Traffic statistics for your repositories (last 14 days)
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/history"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent"
-          >
-            <History className="h-4 w-4" />
-            History
-          </Link>
-          <ThemeToggle />
-        </div>
-      </header>
+    <Layout height="auto" contentWidth={1280} padding={6}>
+      <LayoutContent>
+        <VStack gap={8}>
+          <HStack hAlign="between" vAlign="start" gap={4} wrap="wrap">
+            <VStack gap={1}>
+              <Heading level={1}>GitHub Traffic Dashboard</Heading>
+              <Text type="supporting">
+                Traffic statistics for your repositories (last 14 days)
+              </Text>
+            </VStack>
+            <HStack gap={2} vAlign="center">
+              <Link href="/history" isStandalone>
+                <HStack gap={1.5} vAlign="center" as="span">
+                  <Icon icon={History} size="sm" />
+                  History
+                </HStack>
+              </Link>
+              <ThemeToggle />
+            </HStack>
+          </HStack>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Views
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalViews}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Unique Visitors
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalUniques}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Clones
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{totalClones}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Repositories
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{trafficData.length}</div>
-          </CardContent>
-        </Card>
-      </div>
+          <Grid columns={{ minWidth: 200, max: 4 }} gap={4}>
+            <StatCard label="Total Views" value={totalViews} />
+            <StatCard label="Unique Visitors" value={totalUniques} />
+            <StatCard label="Total Clones" value={totalClones} />
+            <StatCard label="Repositories" value={trafficData.length} />
+          </Grid>
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative max-w-sm flex-1">
-          <Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-          <Input
-            placeholder="Search repositories..."
-            value={search}
-            onChange={(e) => updateSearch({ q: e.target.value })}
-            className="pl-9"
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="show-empty"
-              checked={showEmpty}
-              onCheckedChange={(checked) => {
-                updateSearch({ showEmpty: checked === true })
-              }}
+          <HStack gap={4} hAlign="between" vAlign="center" wrap="wrap">
+            <TextInput
+              label="Search repositories"
+              isLabelHidden
+              placeholder="Search repositories..."
+              value={search}
+              onChange={(value) => updateSearch({ q: value })}
+              startIcon={Search}
+              hasClear
+              width={320}
             />
-            <Label htmlFor="show-empty" className="text-sm">
-              Show empty
-            </Label>
-          </div>
-          <Select
-            value={sortBy}
-            onValueChange={(v) => updateSearch({ sort: v as SortOption })}
-          >
-            <SelectTrigger className="w-35">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="views">Views</SelectItem>
-              <SelectItem value="visitors">Visitors</SelectItem>
-              <SelectItem value="clones">Clones</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            <HStack gap={4} vAlign="center">
+              <CheckboxInput
+                label="Show empty"
+                value={showEmpty ?? false}
+                onChange={(checked) => updateSearch({ showEmpty: checked })}
+              />
+              <Selector
+                label="Sort by"
+                isLabelHidden
+                placeholder="Sort by"
+                value={sortBy}
+                onChange={(value) =>
+                  updateSearch({ sort: value as SortOption })
+                }
+                options={sortSelectorOptions}
+                width={140}
+              />
+            </HStack>
+          </HStack>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredAndSortedData.map((traffic) => (
-          <RepoTrafficCard key={traffic.repo} traffic={traffic} />
-        ))}
-      </div>
-
-      {filteredAndSortedData.length === 0 && (
-        <div className="text-muted-foreground py-12 text-center">
-          No repositories found
-        </div>
-      )}
-    </div>
+          {filteredAndSortedData.length > 0 ? (
+            <Grid columns={{ minWidth: 340, max: 3 }} gap={4}>
+              {filteredAndSortedData.map((traffic) => (
+                <RepoTrafficCard key={traffic.repo} traffic={traffic} />
+              ))}
+            </Grid>
+          ) : (
+            <EmptyState
+              title="No repositories found"
+              description={
+                search
+                  ? 'No repository matches your search. Try a different term or clear the filters.'
+                  : 'Once traffic data is collected, your repositories will appear here.'
+              }
+            />
+          )}
+        </VStack>
+      </LayoutContent>
+    </Layout>
   )
 }
