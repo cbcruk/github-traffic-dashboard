@@ -14,10 +14,9 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 
 - [TanStack Start](https://tanstack.com/start) - Full-stack React framework
 - [TanStack Router](https://tanstack.com/router) - Type-safe routing
-- [shadcn/ui](https://ui.shadcn.com) - UI components
+- [Astryx](https://astryx.atmeta.com) - UI components, layout, and theming
 - [Recharts](https://recharts.org) - Charts
 - [Turso](https://turso.tech) - Edge SQLite database
-- [Tailwind CSS v4](https://tailwindcss.com) - Styling
 
 ## Getting Started
 

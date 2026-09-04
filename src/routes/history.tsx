@@ -1,39 +1,41 @@
 import { useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Card } from '@astryxdesign/core/Card'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Grid } from '@astryxdesign/core/Grid'
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { Icon } from '@astryxdesign/core/Icon'
+import { Layout, LayoutContent } from '@astryxdesign/core/Layout'
+import { Link } from '@astryxdesign/core/Link'
+import { Selector } from '@astryxdesign/core/Selector'
+import { Text } from '@astryxdesign/core/Text'
+import { VStack } from '@astryxdesign/core/VStack'
 import { getHistoricalTraffic } from '../lib/github'
 import { ThemeToggle } from '../components/theme-toggle'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from '@/components/ui/chart'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  type ChartConfig,
+} from '../components/chart'
 import type { DailyTraffic } from '../lib/github.types'
 
 const chartConfig = {
-  views: {
-    label: 'Views',
-    color: 'var(--chart-1)',
-  },
-  visitors: {
-    label: 'Visitors',
-    color: 'var(--chart-2)',
-  },
-  clones: {
-    label: 'Clones',
-    color: 'var(--chart-3)',
-  },
+  views: { label: 'Views', color: 'var(--color-data-categorical-blue)' },
+  visitors: { label: 'Visitors', color: 'var(--color-data-categorical-teal)' },
+  clones: { label: 'Clones', color: 'var(--color-data-categorical-purple)' },
 } satisfies ChartConfig
+
+const dateRangeOptions = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '14', label: 'Last 14 days' },
+  { value: '30', label: 'Last 30 days' },
+  { value: '60', label: 'Last 60 days' },
+  { value: '90', label: 'Last 90 days' },
+]
 
 export const Route = createFileRoute('/history')({
   loader: async (): Promise<DailyTraffic[]> => {
@@ -47,12 +49,51 @@ export const Route = createFileRoute('/history')({
   component: HistoryPage,
 })
 
+function PageHeader({ hasSubtitle }: { hasSubtitle: boolean }) {
+  return (
+    <HStack hAlign="between" vAlign="start" gap={4} wrap="wrap">
+      <VStack gap={1}>
+        <Link href="/" isStandalone type="supporting">
+          <HStack gap={1} vAlign="center" as="span">
+            <Icon icon={ArrowLeft} size="sm" />
+            Back to Dashboard
+          </HStack>
+        </Link>
+        <Heading level={1}>Traffic History</Heading>
+        {hasSubtitle && (
+          <Text type="supporting">
+            Historical traffic data from your repositories
+          </Text>
+        )}
+      </VStack>
+      <ThemeToggle />
+    </HStack>
+  )
+}
+
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <Card>
+      <VStack gap={2}>
+        <Text type="supporting">{label}</Text>
+        <Text size="3xl" weight="bold" hasTabularNumbers>
+          {value.toLocaleString()}
+        </Text>
+      </VStack>
+    </Card>
+  )
+}
+
 function HistoryPage() {
   const historicalData = Route.useLoaderData()
   const [selectedRepo, setSelectedRepo] = useState<string>('all')
   const [dateRange, setDateRange] = useState<string>('30')
 
   const repos = [...new Set(historicalData.map((d) => d.repo))].sort()
+  const repoOptions = [
+    { value: 'all', label: 'All repositories' },
+    ...repos.map((repo) => ({ value: repo, label: repo.split('/')[1] })),
+  ]
 
   const filteredData = historicalData.filter((d) => {
     if (selectedRepo !== 'all' && d.repo !== selectedRepo) return false
@@ -94,190 +135,108 @@ function HistoryPage() {
 
   if (historicalData.length === 0) {
     return (
-      <div className="mx-auto max-w-7xl p-6 md:p-8">
-        <header className="mb-8 flex items-start justify-between">
-          <div>
-            <Link
-              to="/"
-              className="text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1 text-sm"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Dashboard
-            </Link>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Traffic History
-            </h1>
-          </div>
-          <ThemeToggle />
-        </header>
-
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-muted-foreground text-center">
-              <p className="mb-2">No historical data available.</p>
-              <p className="text-sm">
-                Configure Turso database and run the data collection workflow to
-                start tracking historical traffic.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Layout height="auto" contentWidth={1280} padding={6}>
+        <LayoutContent>
+          <VStack gap={8}>
+            <PageHeader hasSubtitle={false} />
+            <EmptyState
+              title="No historical data available"
+              description="Configure the Turso database and run the data collection workflow to start tracking historical traffic."
+            />
+          </VStack>
+        </LayoutContent>
+      </Layout>
     )
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6 md:p-8">
-      <header className="mb-8 flex items-start justify-between">
-        <div>
-          <Link
-            to="/"
-            className="text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1 text-sm"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Traffic History
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            Historical traffic data from your repositories
-          </p>
-        </div>
-        <ThemeToggle />
-      </header>
+    <Layout height="auto" contentWidth={1280} padding={6}>
+      <LayoutContent>
+        <VStack gap={8}>
+          <PageHeader hasSubtitle />
 
-      <div className="mb-6 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Repository:</span>
-          <Select value={selectedRepo} onValueChange={setSelectedRepo}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All repositories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All repositories</SelectItem>
-              {repos.map((repo) => (
-                <SelectItem key={repo} value={repo}>
-                  {repo.split('/')[1]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Period:</span>
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="14">Last 14 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="60">Last 60 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+          <HStack gap={4} wrap="wrap" vAlign="end">
+            <Selector
+              label="Repository"
+              placeholder="All repositories"
+              value={selectedRepo}
+              onChange={setSelectedRepo}
+              options={repoOptions}
+              width={220}
+            />
+            <Selector
+              label="Period"
+              value={dateRange}
+              onChange={setDateRange}
+              options={dateRangeOptions}
+              width={160}
+            />
+          </HStack>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Views
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {totalViews.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Visitors
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {totalVisitors.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Clones
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {totalClones.toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <Grid columns={{ minWidth: 200, max: 3 }} gap={4}>
+            <StatCard label="Total Views" value={totalViews} />
+            <StatCard label="Total Visitors" value={totalVisitors} />
+            <StatCard label="Total Clones" value={totalClones} />
+          </Grid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Traffic Over Time</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length > 0 ? (
-            <ChartContainer config={chartConfig} className="h-80 w-full">
-              <AreaChart data={chartData} margin={{ left: 0, right: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis
-                  dataKey="dateLabel"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tick={{ fontSize: 12 }}
+          <Card>
+            <VStack gap={4}>
+              <Heading level={2}>Traffic Over Time</Heading>
+              {chartData.length > 0 ? (
+                <ChartContainer config={chartConfig} height={320}>
+                  <AreaChart data={chartData} margin={{ left: 0, right: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="dateLabel"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Area
+                      dataKey="views"
+                      type="monotone"
+                      fill="var(--color-views)"
+                      fillOpacity={0.4}
+                      stroke="var(--color-views)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      dataKey="visitors"
+                      type="monotone"
+                      fill="var(--color-visitors)"
+                      fillOpacity={0.4}
+                      stroke="var(--color-visitors)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      dataKey="clones"
+                      type="monotone"
+                      fill="var(--color-clones)"
+                      fillOpacity={0.4}
+                      stroke="var(--color-clones)"
+                      strokeWidth={2}
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              ) : (
+                <EmptyState
+                  title="No data for selected filters"
+                  description="Widen the period or pick a different repository."
+                  isCompact
                 />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tick={{ fontSize: 12 }}
-                />
-                <ChartTooltip
-                  content={<ChartTooltipContent indicator="line" />}
-                />
-                <Area
-                  dataKey="views"
-                  type="monotone"
-                  fill="var(--color-views)"
-                  fillOpacity={0.4}
-                  stroke="var(--color-views)"
-                  strokeWidth={2}
-                />
-                <Area
-                  dataKey="visitors"
-                  type="monotone"
-                  fill="var(--color-visitors)"
-                  fillOpacity={0.4}
-                  stroke="var(--color-visitors)"
-                  strokeWidth={2}
-                />
-                <Area
-                  dataKey="clones"
-                  type="monotone"
-                  fill="var(--color-clones)"
-                  fillOpacity={0.4}
-                  stroke="var(--color-clones)"
-                  strokeWidth={2}
-                />
-              </AreaChart>
-            </ChartContainer>
-          ) : (
-            <div className="text-muted-foreground py-12 text-center">
-              No data for selected filters
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+              )}
+            </VStack>
+          </Card>
+        </VStack>
+      </LayoutContent>
+    </Layout>
   )
 }

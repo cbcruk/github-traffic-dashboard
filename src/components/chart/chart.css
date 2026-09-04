@@ -1,0 +1,40 @@
+/*
+ * Recharts renders raw SVG that no design-system component owns, so it is
+ * styled with plain CSS reading Astryx tokens — the integration path from
+ * `astryx docs styling-libraries`. Scoped to .app-chart so nothing leaks.
+ */
+
+.app-chart .recharts-cartesian-axis-tick text {
+  fill: var(--color-text-secondary);
+}
+
+.app-chart .recharts-cartesian-grid line {
+  stroke: var(--color-border);
+}
+
+.app-chart .recharts-curve.recharts-tooltip-cursor {
+  stroke: var(--color-border-emphasized);
+}
+
+.app-chart .recharts-surface,
+.app-chart .recharts-layer,
+.app-chart .recharts-sector {
+  outline: none;
+}
+
+.app-chart-tooltip {
+  min-width: 8rem;
+  padding: var(--spacing-1-5) var(--spacing-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  background-color: var(--color-background-popover);
+  box-shadow: var(--shadow-high);
+}
+
+.app-chart-tooltip-swatch {
+  flex-shrink: 0;
+  width: var(--spacing-1);
+  align-self: stretch;
+  border-radius: var(--radius-full);
+  background-color: var(--app-chart-swatch-color);
+}
