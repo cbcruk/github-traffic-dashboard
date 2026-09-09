@@ -35,7 +35,8 @@ const plugin: NitroAppPlugin = (nitroApp) => {
           log: (msg) => console.log(msg),
         })
         console.log(
-          `Scheduled collection completed: ${result.succeeded}/${result.repos} succeeded` +
+          `Scheduled collection completed in ${(result.durationMs / 1000).toFixed(1)}s: ` +
+            `${result.succeeded}/${result.repos} succeeded` +
             (result.failed.length
               ? `, failed: ${result.failed.join(', ')}`
               : ''),

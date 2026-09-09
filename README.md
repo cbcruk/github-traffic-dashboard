@@ -91,7 +91,15 @@ http://localhost:3000 에서 확인
 
 > GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화됩니다. Cloudflare cron 트리거에는 이 제한이 없습니다.
 
-수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. cron 스케줄과 Cloudflare 프리셋은 [`vite.config.ts`](./vite.config.ts)의 Nitro 설정(`cloudflare.wrangler.triggers`)에 정의됩니다.
+수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. 레포지토리는 기본 6개씩 병렬로 처리하고, 한 레포의 모든 행은 한 번의 batch 트랜잭션으로 기록합니다.
+
+수집 대상은 GitHub Traffic API의 네 엔드포인트(views, clones, popular/referrers, popular/paths)입니다. views와 clones는 같은 14일 윈도우를 쓰므로 날짜 기준으로 병합해 `daily_traffic` 한 행에 저장하고, referrers와 paths는 14일 롤링 집계라 수집일 스냅샷으로 `referrers`, `popular_paths`에 남깁니다.
+
+`traffic_totals`에는 GitHub이 함께 내려주는 윈도우 단위 합계를 스냅샷으로 저장합니다. 유니크 방문자는 14일 전체에 걸쳐 중복 제거된 값이라 일별 수치를 더해서는 복원할 수 없기 때문입니다. `repositories`에는 매 실행 시점의 소유 레포 목록을 기록합니다. 트래픽 행은 레포보다 오래 남으므로, 이름이 바뀌거나 삭제된 레포를 걸러내는 기준이 됩니다.
+
+실행 이력은 `collection_runs` 테이블에 기록됩니다. 실행 시작 시 행이 만들어지고 완료 시 `finished_at`, `duration_ms`, 성공/실패 레포 수가 채워지므로, `finished_at`이 NULL인 행은 중간에 중단된 실행을 뜻합니다. GitHub은 트래픽이 없는 날도 0으로 돌려주기 때문에 이 테이블 없이는 "수집 실패"와 "트래픽 0"을 구분할 수 없습니다.
+
+cron 스케줄과 Cloudflare 프리셋은 [`vite.config.ts`](./vite.config.ts)의 Nitro 설정(`cloudflare.wrangler.triggers`)에 정의됩니다.
 
 ### 수동 수집 (fallback)
 

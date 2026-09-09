@@ -7,7 +7,8 @@ async function main(): Promise<void> {
   const result = await collectTraffic({ log: (msg) => console.log(msg) })
 
   console.log(
-    `Traffic data collection completed! ${result.succeeded}/${result.repos} repositories succeeded.`,
+    `Traffic data collection completed in ${(result.durationMs / 1000).toFixed(1)}s! ` +
+      `${result.succeeded}/${result.repos} repositories succeeded.`,
   )
   if (result.failed.length > 0) {
     console.log(`Failed: ${result.failed.join(', ')}`)
