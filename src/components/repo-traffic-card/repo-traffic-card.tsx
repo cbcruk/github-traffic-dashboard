@@ -5,6 +5,7 @@ import { Grid } from '@astryxdesign/core/Grid'
 import { HStack } from '@astryxdesign/core/HStack'
 import { Icon } from '@astryxdesign/core/Icon'
 import { Link } from '@astryxdesign/core/Link'
+import { List, ListItem } from '@astryxdesign/core/List'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import {
@@ -35,6 +36,16 @@ function Metric({ label, value }: { label: string; value: number }) {
 export function RepoTrafficCard({ traffic }: RepoTrafficCardProps) {
   const repoName = traffic.repo.split('/')[1]
   const topReferrer = traffic.referrers[0]
+  const topPaths = traffic.paths.slice(0, 3)
+
+  // GitHub returns paths absolute from the site root, e.g.
+  // `/owner/repo/blob/main/README.md`. Strip the repo prefix so the list reads
+  // as locations inside the repository.
+  const repoPrefix = `/${traffic.repo}`
+  function pathLabel(path: string): string {
+    if (!path.startsWith(repoPrefix)) return path
+    return path.slice(repoPrefix.length).replace(/^\//, '') || 'Repository root'
+  }
 
   const viewsMap = new Map(
     traffic.views.views.map((v) => [v.timestamp.split('T')[0], v]),
@@ -126,6 +137,24 @@ export function RepoTrafficCard({ traffic }: RepoTrafficCardProps) {
               />
             </AreaChart>
           </ChartContainer>
+        )}
+
+        {topPaths.length > 0 && (
+          <List header="Top paths" density="compact">
+            {topPaths.map((path) => (
+              <ListItem
+                key={path.path}
+                label={pathLabel(path.path)}
+                href={`https://github.com${path.path}`}
+                target="_blank"
+                endContent={
+                  <Text color="secondary" hasTabularNumbers>
+                    {path.count.toLocaleString()}
+                  </Text>
+                }
+              />
+            ))}
+          </List>
         )}
       </VStack>
     </Card>

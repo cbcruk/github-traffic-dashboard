@@ -39,11 +39,19 @@ export interface Referrer {
   uniques: number
 }
 
+export interface PopularPath {
+  path: string
+  title: string
+  count: number
+  uniques: number
+}
+
 export interface RepoTraffic {
   repo: string
   views: ViewsResponse
   clones: ClonesResponse
   referrers: Referrer[]
+  paths: PopularPath[]
 }
 
 export interface DailyTraffic {

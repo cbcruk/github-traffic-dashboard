@@ -13,6 +13,7 @@ function makeRepo(
     views: { count: views, uniques: visitors, views: [] },
     clones: { count: clones, uniques: 0, clones: [] },
     referrers: [],
+    paths: [],
   }
 }
 
