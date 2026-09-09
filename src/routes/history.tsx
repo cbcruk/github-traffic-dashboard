@@ -100,7 +100,8 @@ function HistoryPage() {
     const daysAgo = Math.floor(
       (Date.now() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24),
     )
-    return daysAgo <= parseInt(dateRange)
+    // Today is day 0, so "Last 7 days" spans days 0 through 6.
+    return daysAgo < parseInt(dateRange)
   })
 
   const aggregatedByDate = filteredData.reduce(
