@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getDbClient } from './db'
+import { executeOrEmpty, getDbClient } from './db'
 import type { RepoTraffic, DailyTraffic } from './github.types'
 
 /**
@@ -13,9 +13,6 @@ const CURRENT_REPOS = `
   SELECT repo FROM repositories
   WHERE last_seen = (SELECT MAX(last_seen) FROM repositories)
 `
-
-/** True before the first run of the collector has populated `repositories`. */
-const NO_REPOS_RECORDED = `NOT EXISTS (SELECT 1 FROM repositories)`
 
 export const getAllReposTraffic = createServerFn().handler(
   async (): Promise<RepoTraffic[]> => {
@@ -82,7 +79,9 @@ export const getAllReposTraffic = createServerFn().handler(
       // Window-level aggregates as GitHub reported them. Counts stay as the
       // daily sums above so the numbers match the chart beside them; only the
       // uniques, which are not additive, come from the snapshot.
-      const totalsResult = await client.execute(`
+      const totalsRows = await executeOrEmpty(
+        client,
+        `
         SELECT t.repo, t.view_uniques, t.clone_uniques
         FROM traffic_totals t
         INNER JOIN (
@@ -90,9 +89,10 @@ export const getAllReposTraffic = createServerFn().handler(
           FROM traffic_totals
           GROUP BY repo
         ) latest ON t.repo = latest.repo AND t.date = latest.max_date
-      `)
+      `,
+      )
 
-      for (const row of totalsResult.rows) {
+      for (const row of totalsRows) {
         const traffic = repoMap.get(row.repo as string)
         if (traffic) {
           traffic.views.uniques = row.view_uniques as number
@@ -103,7 +103,9 @@ export const getAllReposTraffic = createServerFn().handler(
       // GitHub's referrers and paths endpoints already return a rolling 14-day
       // aggregate, so each collected row is a full snapshot — summing multiple
       // days would multiply the counts. Use only the most recent per repo.
-      const referrersResult = await client.execute(`
+      const referrerRows = await executeOrEmpty(
+        client,
+        `
         SELECT r.repo, r.referrer, r.count, r.uniques
         FROM referrers r
         INNER JOIN (
@@ -112,9 +114,10 @@ export const getAllReposTraffic = createServerFn().handler(
           GROUP BY repo
         ) latest ON r.repo = latest.repo AND r.date = latest.max_date
         ORDER BY r.count DESC
-      `)
+      `,
+      )
 
-      for (const row of referrersResult.rows) {
+      for (const row of referrerRows) {
         const traffic = repoMap.get(row.repo as string)
         if (traffic) {
           traffic.referrers.push({
@@ -125,7 +128,9 @@ export const getAllReposTraffic = createServerFn().handler(
         }
       }
 
-      const pathsResult = await client.execute(`
+      const pathRows = await executeOrEmpty(
+        client,
+        `
         SELECT p.repo, p.path, p.title, p.count, p.uniques
         FROM popular_paths p
         INNER JOIN (
@@ -134,9 +139,10 @@ export const getAllReposTraffic = createServerFn().handler(
           GROUP BY repo
         ) latest ON p.repo = latest.repo AND p.date = latest.max_date
         ORDER BY p.count DESC
-      `)
+      `,
+      )
 
-      for (const row of pathsResult.rows) {
+      for (const row of pathRows) {
         const traffic = repoMap.get(row.repo as string)
         if (traffic) {
           traffic.paths.push({
@@ -160,11 +166,21 @@ export const getHistoricalTraffic = createServerFn().handler(
   async (): Promise<DailyTraffic[]> => {
     try {
       const client = getDbClient()
+
+      // Until the collector has populated `repositories` (or created it at
+      // all), there is nothing to filter against, so show every repo.
+      const recorded = await executeOrEmpty(
+        client,
+        `SELECT 1 FROM repositories LIMIT 1`,
+      )
+      const repoFilter =
+        recorded.length > 0 ? `AND repo IN (${CURRENT_REPOS})` : ''
+
       const result = await client.execute(`
         SELECT repo, date, views, visitors, clones, clone_uniques as cloneUniques
         FROM daily_traffic
         WHERE date >= date('now', '-90 days')
-          AND (${NO_REPOS_RECORDED} OR repo IN (${CURRENT_REPOS}))
+          ${repoFilter}
         ORDER BY date DESC
       `)
 
