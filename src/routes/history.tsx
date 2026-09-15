@@ -142,7 +142,7 @@ function HistoryPage() {
             <PageHeader hasSubtitle={false} />
             <EmptyState
               title="No historical data available"
-              description="Configure the Turso database and run the data collection workflow to start tracking historical traffic."
+              description="Once the daily collection has run, traffic history will appear here."
             />
           </VStack>
         </LayoutContent>
