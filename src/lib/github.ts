@@ -3,16 +3,26 @@ import { executeOrEmpty, getDbClient } from './db'
 import type { RepoTraffic, DailyTraffic } from './github.types'
 
 /**
- * Repos owned as of the newest collection that listed any.
+ * Repos the dashboard may show: owned as of the newest collection that listed
+ * any, and public unless the deployment sets `SHOW_PRIVATE_REPOS=true`.
  *
  * Traffic rows outlive the repository they describe, so a renamed or deleted
  * repo keeps showing up in historical queries. Anchoring on `MAX(last_seen)`
  * rather than a fixed cutoff means a stalled collector narrows nothing.
+ *
+ * This fails closed: `private = 0` excludes repos whose visibility has not
+ * been recorded yet, and a database the collector has not migrated makes the
+ * query error, so the page renders empty instead of exposing private repos.
  */
-const CURRENT_REPOS = `
-  SELECT repo FROM repositories
-  WHERE last_seen = (SELECT MAX(last_seen) FROM repositories)
-`
+function visibleReposQuery(): string {
+  const showPrivate = process.env.SHOW_PRIVATE_REPOS === 'true'
+
+  return `
+    SELECT repo FROM repositories
+    WHERE last_seen = (SELECT MAX(last_seen) FROM repositories)
+      ${showPrivate ? '' : 'AND private = 0'}
+  `
+}
 
 export const getAllReposTraffic = createServerFn().handler(
   async (): Promise<RepoTraffic[]> => {
@@ -30,6 +40,7 @@ export const getAllReposTraffic = createServerFn().handler(
           clone_uniques
         FROM daily_traffic
         WHERE date >= date('now', '-13 days')
+          AND repo IN (${visibleReposQuery()})
         ORDER BY repo, date
       `)
 
@@ -167,20 +178,11 @@ export const getHistoricalTraffic = createServerFn().handler(
     try {
       const client = getDbClient()
 
-      // Until the collector has populated `repositories` (or created it at
-      // all), there is nothing to filter against, so show every repo.
-      const recorded = await executeOrEmpty(
-        client,
-        `SELECT 1 FROM repositories LIMIT 1`,
-      )
-      const repoFilter =
-        recorded.length > 0 ? `AND repo IN (${CURRENT_REPOS})` : ''
-
       const result = await client.execute(`
         SELECT repo, date, views, visitors, clones, clone_uniques as cloneUniques
         FROM daily_traffic
         WHERE date >= date('now', '-90 days')
-          ${repoFilter}
+          AND repo IN (${visibleReposQuery()})
         ORDER BY date DESC
       `)
 

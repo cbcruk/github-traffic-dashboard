@@ -46,6 +46,9 @@ TURSO_AUTH_TOKEN=your-auth-token
 
 # GitHub Token
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+# (선택) private 레포를 대시보드에 표시
+# SHOW_PRIVATE_REPOS=true
 ```
 
 > - Turso 데이터베이스는 [turso.tech](https://turso.tech)에서 무료로 생성 가능
@@ -120,6 +123,14 @@ GitHub Actions에 `workflow_dispatch` 전용 워크플로우가 남아 있습니
     └── workflows/          # GitHub Actions (수동 fallback)
 ```
 
+## Private 레포
+
+수집기는 토큰으로 접근 가능한 private 레포까지 모두 수집하지만, 대시보드에는 **public 레포만 표시**합니다. 배포된 Worker URL은 누구나 열 수 있기 때문입니다.
+
+private 레포까지 보려면 먼저 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)로 대시보드 접근을 제한한 뒤 `SHOW_PRIVATE_REPOS=true`를 설정하세요.
+
+공개 여부는 `repositories.private`에 기록됩니다. 이 값이 없는 레포(이 컬럼이 추가되기 전에 수집된 레포)는 다음 수집이 끝날 때까지 private으로 취급되어 숨겨집니다.
+
 ## Deployment
 
 앱과 cron이 하나의 Cloudflare Worker로 함께 배포됩니다.
@@ -133,6 +144,8 @@ pnpm build
 npx wrangler secret put GITHUB_TOKEN
 npx wrangler secret put TURSO_DATABASE_URL
 npx wrangler secret put TURSO_AUTH_TOKEN
+# (선택) Cloudflare Access로 보호한 경우에만
+# npx wrangler secret put SHOW_PRIVATE_REPOS
 
 # 3. 빌드 + 배포 (cron 트리거가 함께 등록됨)
 pnpm run deploy

@@ -1,9 +1,11 @@
+import type { Client } from '@libsql/client/web'
+
 /**
  * Canonical database schema.
  *
- * Shared by the init script (`pnpm db:init`) and the collector, which runs
- * these through `client.migrate()` at the start of every run so a freshly
- * deployed Worker never writes against a stale schema.
+ * Shared by the init script (`pnpm db:init`) and the collector, which applies
+ * it through `migrateSchema()` at the start of every run so a freshly deployed
+ * Worker never writes against a stale schema.
  */
 export const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS daily_traffic (
@@ -57,10 +59,14 @@ export const SCHEMA_STATEMENTS = [
   // Which repositories the account actually owned at each run. Traffic rows
   // outlive the repository, so this is what separates a renamed or deleted
   // repo from one that simply had no traffic.
+  //
+  // `private` is NULL for rows written before visibility was recorded. Readers
+  // treat NULL as private, so an unknown repo stays hidden until the next run.
   `CREATE TABLE IF NOT EXISTS repositories (
     repo TEXT PRIMARY KEY,
     first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL
+    last_seen TEXT NOT NULL,
+    private INTEGER
   )`,
 
   // One row per collection run. A run killed mid-flight leaves finished_at
@@ -83,3 +89,24 @@ export const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_traffic_totals_repo_date ON traffic_totals(repo, date)`,
   `CREATE INDEX IF NOT EXISTS idx_collection_runs_started_at ON collection_runs(started_at)`,
 ]
+
+/**
+ * Columns added to a table after it first shipped. `CREATE TABLE IF NOT EXISTS`
+ * never alters an existing table, so each one is added when missing.
+ */
+const ADDED_COLUMNS = [
+  { table: 'repositories', column: 'private', definition: 'INTEGER' },
+]
+
+export async function migrateSchema(client: Client): Promise<void> {
+  await client.migrate(SCHEMA_STATEMENTS)
+
+  for (const { table, column, definition } of ADDED_COLUMNS) {
+    const { rows } = await client.execute(`PRAGMA table_info(${table})`)
+    if (!rows.some((row) => row.name === column)) {
+      await client.execute(
+        `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`,
+      )
+    }
+  }
+}
