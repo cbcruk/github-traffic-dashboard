@@ -8,6 +8,7 @@ import {
 interface CloudflareEnv {
   GITHUB_TOKEN?: string
   ALERT_WEBHOOK_URL?: string
+  ALERT_GITHUB_REPO?: string
   DB?: D1Database
 }
 
@@ -47,6 +48,8 @@ const plugin: NitroAppPlugin = (nitroApp) => {
           await checkCollectionHealth({
             db: e.DB,
             webhookUrl: e.ALERT_WEBHOOK_URL,
+            issueRepo: e.ALERT_GITHUB_REPO,
+            githubToken: e.GITHUB_TOKEN,
             log: (msg) => console.log(msg),
           })
           return
