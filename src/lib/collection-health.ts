@@ -1,3 +1,9 @@
+import {
+  isPublicRepo,
+  redactRepos,
+  reportProblem,
+  resolveProblem,
+} from './health-issue'
 import { migrateSchema } from './schema'
 
 /**
@@ -6,8 +12,8 @@ import { migrateSchema } from './schema'
  * GitHub keeps traffic for 14 days, so a collector that silently stops loses
  * data for good. From 2026-07-15 to late August runs collected only 1-3
  * repositories and nobody noticed for six weeks (#6). `collection_runs`
- * records every run; this reads it back, and a second daily cron sends what it
- * finds to a webhook.
+ * records every run; this reads it back, and a second daily cron reports what
+ * it finds to a webhook and a GitHub issue.
  */
 
 /**
@@ -187,41 +193,99 @@ export function formatAlert(health: CollectionHealth): string {
 
 interface HealthCheckOptions {
   db: D1Database
-  /** Where to report problems. Without one the check only logs. */
+  /** Where to post problems. */
   webhookUrl?: string
+  /** Repository (`owner/name`) to track problems in as a GitHub issue. */
+  issueRepo?: string
+  /** Token for `issueRepo`; the collector's token works if it can write issues. */
+  githubToken?: string
   now?: Date
   log?: (message: string) => void
   fetch?: (request: Request) => Promise<Response>
 }
 
-/** Assess recent runs and report a failed or degraded collection. */
+/** Repositories not known to be public, which alerts in public places hide. */
+async function loadUnlistedRepos(db: D1Database): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT repo FROM repositories WHERE private IS NOT 0`)
+    .all<{ repo: string }>()
+  return results.map((row) => row.repo)
+}
+
+/**
+ * Assess recent runs and report through every configured channel.
+ *
+ * A failed or degraded collection posts to the webhook and opens (or comments
+ * on) the alert issue; a healthy one closes that issue. Each channel runs even
+ * if another fails, and any failure is thrown afterwards so the cron logs it.
+ * Without channels the check only logs.
+ */
 export async function checkCollectionHealth({
   db,
   webhookUrl,
+  issueRepo,
+  githubToken,
   now = new Date(),
   log = () => {},
   fetch: send = (request) => fetch(request),
 }: HealthCheckOptions): Promise<CollectionHealth> {
   await migrateSchema(db)
   const health = assessCollection(await loadRecentRuns(db), now)
+  const isProblem = health.status === 'failed' || health.status === 'degraded'
+  log(isProblem ? formatAlert(health) : `Collection health: ${health.status}`)
 
-  if (health.status !== 'failed' && health.status !== 'degraded') {
-    log(`Collection health: ${health.status}`)
-    return health
+  const issueTarget =
+    issueRepo && githubToken
+      ? { repo: issueRepo, token: githubToken, fetch: send }
+      : undefined
+  if (issueRepo && !githubToken) {
+    log('ALERT_GITHUB_REPO is set but GITHUB_TOKEN is not; skipping issues.')
   }
 
-  const message = formatAlert(health)
-  log(message)
-  if (!webhookUrl) {
-    log('ALERT_WEBHOOK_URL is not set; not sending an alert.')
-    return health
+  const errors: string[] = []
+  const attempt = async (channel: string, task: () => Promise<void>) => {
+    try {
+      await task()
+    } catch (error) {
+      errors.push(`${channel}: ${String(error)}`)
+    }
   }
 
-  const response = await send(buildWebhookRequest(webhookUrl, message))
-  if (!response.ok) {
-    throw new Error(
-      `Alert webhook responded ${response.status}: ${await response.text()}`,
-    )
+  if (isProblem && webhookUrl) {
+    await attempt('webhook', async () => {
+      const response = await send(
+        buildWebhookRequest(webhookUrl, formatAlert(health)),
+      )
+      if (!response.ok) {
+        throw new Error(
+          `Alert webhook responded ${response.status}: ${await response.text()}`,
+        )
+      }
+    })
+  }
+
+  if (isProblem && issueTarget) {
+    await attempt('GitHub issue', async () => {
+      const message = (await isPublicRepo(issueTarget))
+        ? redactRepos(formatAlert(health), await loadUnlistedRepos(db))
+        : formatAlert(health)
+      const { action, url } = await reportProblem(issueTarget, message, now)
+      log(`Alert issue ${action}: ${url}`)
+    })
+  }
+
+  if (health.status === 'ok' && issueTarget) {
+    await attempt('GitHub issue', async () => {
+      const url = await resolveProblem(
+        issueTarget,
+        `Collection is healthy again: the run started at ${health.lastRun?.startedAt} finished for every repository.`,
+      )
+      if (url) log(`Alert issue closed: ${url}`)
+    })
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Alerting failed. ${errors.join(' ')}`)
   }
   return health
 }

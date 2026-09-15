@@ -101,7 +101,7 @@ cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의�
 GitHub은 트래픽을 14일만 보관하므로, 수집이 조용히 멈추면 그 기간 데이터는 복구할 수 없습니다. 그래서 `collection_runs`를 두 곳에서 읽습니다.
 
 - **대시보드 헤더:** 마지막 수집 시각과 상태(정상, 진행 중, 일부 실패, 실패, 수집 전)를 표시합니다. 공개 페이지이므로 실패한 레포 이름, 오류 메시지, 레포 수는 보여주지 않습니다.
-- **헬스 체크 cron(UTC 06:00):** 최근 실행을 확인하고, 문제가 있으면 `ALERT_WEBHOOK_URL`로 자세한 내용을 보냅니다. 시크릿이 없으면 로그만 남깁니다.
+- **헬스 체크 cron(UTC 06:00):** 최근 실행을 확인하고, 설정된 채널로 알립니다. 채널이 없으면 로그만 남깁니다.
 
 실패로 판단하는 경우는 다음과 같습니다.
 
@@ -110,7 +110,14 @@ GitHub은 트래픽을 14일만 보관하므로, 수집이 조용히 멈추면 �
 | 실패      | 26시간 넘게 실행이 시작되지 않음, 1시간이 지나도 끝나지 않음, 오류로 중단됨 |
 | 일부 실패 | 실패한 레포가 있음, 성공한 레포 수가 직전 정상 실행의 절반 미만으로 줄어듦  |
 
-웹훅 URL이 Discord(`discord.com`)나 Slack(`hooks.slack.com`)이면 각 형식의 JSON으로, 그 밖의 URL(예: `https://ntfy.sh/<topic>`)이면 plain text로 POST합니다. 문제가 계속되면 매일 한 번씩 알림이 갑니다.
+알림 채널은 둘 중 하나 또는 둘 다 쓸 수 있습니다.
+
+- **GitHub 이슈(`ALERT_GITHUB_REPO=owner/name`):** 문제가 생기면 `collection-health` 라벨을 단 이슈를 엽니다. 문제가 계속되는 동안에는 새 이슈 대신 그 이슈에 매일 댓글을 달고, 수집이 정상으로 돌아오면 이슈를 닫습니다. `GITHUB_TOKEN`으로 요청하므로 토큰에 해당 레포의 Issues 쓰기 권한이 있어야 합니다(classic PAT의 `repo` scope면 충분합니다).
+  - 대상 레포가 public이면 private 레포와 공개 여부를 모르는 레포의 이름을 `(private repository)`로 가립니다.
+  - 토큰 주인이 만든 이슈와 댓글이라 GitHub이 본인에게는 알림을 보내지 않습니다. 레포 이슈 목록이나 라벨로 확인하세요.
+- **웹훅(`ALERT_WEBHOOK_URL`):** URL이 Discord(`discord.com`)나 Slack(`hooks.slack.com`)이면 각 형식의 JSON으로, 그 밖의 URL(예: `https://ntfy.sh/<topic>`)이면 plain text로 POST합니다. 문제가 계속되면 매일 한 번씩 보냅니다. 비공개 채널이라는 전제로 레포 이름을 가리지 않습니다.
+
+한 채널이 실패해도 다른 채널은 실행되고, 실패 내용은 Worker 로그에 남습니다. 두 값 모두 `wrangler.jsonc`의 `vars`가 아니라 시크릿으로 등록하세요. `wrangler deploy`는 설정 파일에 없는 일반 변수를 지우지만 시크릿은 유지하므로, fork한 레포의 설정 파일을 upstream과 다르게 유지할 필요가 없습니다.
 
 헬스 체크 cron은 표현식 값으로 구분합니다. 시각을 바꾸려면 `wrangler.jsonc`의 `triggers.crons`와 `src/lib/collection-health.ts`의 `HEALTH_CHECK_CRON`을 함께 바꾸세요. 26시간 기준은 수집이 매일 돈다는 전제입니다.
 
@@ -160,6 +167,8 @@ pnpm run deploy
 
 # 3. 시크릿 등록
 npx wrangler secret put GITHUB_TOKEN
+# (선택) 수집 실패를 기록할 GitHub 레포 (owner/name)
+# npx wrangler secret put ALERT_GITHUB_REPO
 # (선택) 수집 실패 알림을 받을 웹훅 URL (Discord, Slack, ntfy 등)
 # npx wrangler secret put ALERT_WEBHOOK_URL
 # (선택) Cloudflare Access로 보호한 경우에만
