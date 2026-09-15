@@ -28,8 +28,8 @@ export function getDbClient(config: DbConfig = {}) {
  * Runs a query whose result the caller can live without, returning no rows on failure.
  *
  * Tables added by a schema change only exist once the collector has run
- * `migrate()` against the database, so a freshly deployed Worker can read
- * before they are created. Supplementary queries go through here so that one
+ * `migrateSchema()` against the database, so a freshly deployed Worker can
+ * read before they are created. Supplementary queries go through here so that one
  * missing table degrades a section of the page instead of emptying all of it.
  */
 export async function executeOrEmpty(

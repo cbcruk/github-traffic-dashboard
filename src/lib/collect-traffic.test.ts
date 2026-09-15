@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildRepoStatements } from './collect-traffic'
+import {
+  buildRepoStatements,
+  buildRepositoryStatements,
+} from './collect-traffic'
 
 const empty = {
   views: { count: 0, uniques: 0, views: [] },
@@ -87,6 +90,25 @@ describe('buildRepoStatements', () => {
 
     expect(argsFor(statements, 'traffic_totals')).toEqual([
       ['me/repo', '2026-09-09', 4, 1, 0, 0],
+    ])
+  })
+})
+
+describe('buildRepositoryStatements', () => {
+  it('records visibility so the dashboard can hide private repos', () => {
+    const statements = buildRepositoryStatements(
+      [
+        { full_name: 'me/public', private: false },
+        { full_name: 'me/secret', private: true },
+      ],
+      '2026-09-15',
+    )
+
+    expect(
+      statements.map((s) => (typeof s === 'string' ? [] : s.args)),
+    ).toEqual([
+      ['me/public', '2026-09-15', '2026-09-15', 0],
+      ['me/secret', '2026-09-15', '2026-09-15', 1],
     ])
   })
 })

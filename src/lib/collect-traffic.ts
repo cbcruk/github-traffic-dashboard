@@ -1,5 +1,5 @@
 import { getDbClient, type DbConfig } from './db'
-import { SCHEMA_STATEMENTS } from './schema'
+import { migrateSchema } from './schema'
 import type { Client, InStatement } from '@libsql/client/web'
 
 const GITHUB_API_BASE = 'https://api.github.com'
@@ -16,6 +16,7 @@ const DEFAULT_CONCURRENCY = 6
 interface Repository {
   full_name: string
   fork: boolean
+  private: boolean
 }
 
 interface TrafficPoint {
@@ -292,19 +293,22 @@ export function buildRepoStatements(
  *
  * Written from the repo listing rather than from traffic results, so a repo
  * whose traffic fetch failed still counts as owned. Readers use the newest
- * `last_seen` to tell current repos from renamed or deleted ones.
+ * `last_seen` to tell current repos from renamed or deleted ones, and
+ * `private` to keep private repos off a public dashboard.
  */
-function buildRepositoryStatements(
-  repos: Repository[],
+export function buildRepositoryStatements(
+  repos: Pick<Repository, 'full_name' | 'private'>[],
   collectedOn: string,
 ): InStatement[] {
   return repos.map((repo) => ({
     sql: `
-      INSERT INTO repositories (repo, first_seen, last_seen)
-      VALUES (?, ?, ?)
-      ON CONFLICT(repo) DO UPDATE SET last_seen = excluded.last_seen
+      INSERT INTO repositories (repo, first_seen, last_seen, private)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(repo) DO UPDATE SET
+        last_seen = excluded.last_seen,
+        private = excluded.private
     `,
-    args: [repo.full_name, collectedOn, collectedOn],
+    args: [repo.full_name, collectedOn, collectedOn, repo.private ? 1 : 0],
   }))
 }
 
@@ -376,7 +380,7 @@ export async function collectTraffic(
   const headers = buildHeaders(token)
 
   const client = getDbClient(options.turso)
-  await client.migrate(SCHEMA_STATEMENTS)
+  await migrateSchema(client)
 
   const startedAtMs = Date.now()
   const collectedOn = new Date(startedAtMs).toISOString().split('T')[0]
