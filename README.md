@@ -77,7 +77,7 @@ http://localhost:3000 에서 확인
 | `pnpm preview`    | 빌드 미리보기                |
 | `pnpm test`       | 테스트 실행                  |
 | `pnpm format`     | Prettier 포맷 적용           |
-| `pnpm db:init`    | 로컬 D1 테이블 초기화        |
+| `pnpm db:init`    | 로컬 D1에 마이그레이션 적용  |
 | `pnpm db:collect` | 로컬 D1에 트래픽 데이터 수집 |
 
 ## Data Collection (Cloudflare Cron)
@@ -96,7 +96,15 @@ http://localhost:3000 에서 확인
 
 cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의됩니다. Nitro가 빌드 시 생성하는 Worker 설정(`.output/server/wrangler.json`)에 이 파일이 병합됩니다.
 
-테이블은 매 수집 시작 시 자동으로 생성·갱신되므로 배포 환경에서 따로 초기화할 필요가 없습니다.
+### 스키마 마이그레이션
+
+스키마 변경은 [`src/lib/schema.ts`](./src/lib/schema.ts)의 `MIGRATIONS`에 버전 순서대로 쌓이고, 적용된 버전은 `schema_migrations` 테이블에 기록됩니다. 배포 단계에서 따로 실행할 명령은 없습니다.
+
+- 대시보드는 Worker isolate마다 첫 쿼리 전에 밀린 마이그레이션을 적용합니다. 새 버전을 배포하면 다음 cron을 기다리지 않고 첫 요청에서 스키마가 맞춰집니다.
+- cron 수집도 시작할 때 같은 과정을 거칩니다.
+- 마이그레이션 하나의 변경과 버전 기록은 한 D1 batch로 실행되므로, 실패하면 함께 롤백되고 다음 시도에서 다시 적용됩니다.
+
+스키마를 바꿀 때는 이미 배포된 마이그레이션을 고치지 말고 다음 버전을 추가하세요. 이미 그 버전을 기록한 배포에서는 다시 실행되지 않습니다.
 
 ## Project Structure
 

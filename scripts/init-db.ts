@@ -1,12 +1,15 @@
-import { SCHEMA_STATEMENTS, migrateSchema } from '../src/lib/schema'
+import { migrateSchema } from '../src/lib/schema'
 import { withLocalDb } from './local-db'
 
 async function main(): Promise<void> {
   console.log('Initializing the local D1 database...')
 
-  await withLocalDb(migrateSchema)
+  const applied = await withLocalDb((db) => migrateSchema(db))
 
-  console.log(`✓ Applied ${SCHEMA_STATEMENTS.length} schema statements`)
+  for (const { version, name } of applied) {
+    console.log(`✓ Applied migration ${version} (${name})`)
+  }
+  if (applied.length === 0) console.log('✓ Schema is already up to date')
   console.log('Database initialization completed!')
 }
 

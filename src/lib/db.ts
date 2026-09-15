@@ -73,11 +73,9 @@ export async function runBatch(
 /**
  * Runs a query whose result the caller can live without, returning no rows on failure.
  *
- * Tables added by a schema change only exist once the collector has run
- * `migrateSchema()` against the database, so a freshly deployed Worker can
- * read before they are created. Supplementary queries go through here so that
- * one missing table degrades a section of the page instead of emptying all of
- * it.
+ * Supplementary queries go through here so that one failing query (against a
+ * table from a migration that could not be applied, say) degrades a section of
+ * the page instead of emptying all of it.
  */
 export async function allOrEmpty<T = Record<string, unknown>>(
   db: D1Database,
