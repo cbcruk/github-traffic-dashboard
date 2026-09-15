@@ -96,6 +96,24 @@ http://localhost:3000 에서 확인
 
 cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의됩니다. Nitro가 빌드 시 생성하는 Worker 설정(`.output/server/wrangler.json`)에 이 파일이 병합됩니다.
 
+### 수집 상태와 실패 알림
+
+GitHub은 트래픽을 14일만 보관하므로, 수집이 조용히 멈추면 그 기간 데이터는 복구할 수 없습니다. 그래서 `collection_runs`를 두 곳에서 읽습니다.
+
+- **대시보드 헤더:** 마지막 수집 시각과 상태(정상, 진행 중, 일부 실패, 실패, 수집 전)를 표시합니다. 공개 페이지이므로 실패한 레포 이름, 오류 메시지, 레포 수는 보여주지 않습니다.
+- **헬스 체크 cron(UTC 06:00):** 최근 실행을 확인하고, 문제가 있으면 `ALERT_WEBHOOK_URL`로 자세한 내용을 보냅니다. 시크릿이 없으면 로그만 남깁니다.
+
+실패로 판단하는 경우는 다음과 같습니다.
+
+| 상태      | 조건                                                                        |
+| --------- | --------------------------------------------------------------------------- |
+| 실패      | 26시간 넘게 실행이 시작되지 않음, 1시간이 지나도 끝나지 않음, 오류로 중단됨 |
+| 일부 실패 | 실패한 레포가 있음, 성공한 레포 수가 직전 정상 실행의 절반 미만으로 줄어듦  |
+
+웹훅 URL이 Discord(`discord.com`)나 Slack(`hooks.slack.com`)이면 각 형식의 JSON으로, 그 밖의 URL(예: `https://ntfy.sh/<topic>`)이면 plain text로 POST합니다. 문제가 계속되면 매일 한 번씩 알림이 갑니다.
+
+헬스 체크 cron은 표현식 값으로 구분합니다. 시각을 바꾸려면 `wrangler.jsonc`의 `triggers.crons`와 `src/lib/collection-health.ts`의 `HEALTH_CHECK_CRON`을 함께 바꾸세요. 26시간 기준은 수집이 매일 돈다는 전제입니다.
+
 ### 스키마 마이그레이션
 
 스키마 변경은 [`src/lib/schema.ts`](./src/lib/schema.ts)의 `MIGRATIONS`에 버전 순서대로 쌓이고, 적용된 버전은 `schema_migrations` 테이블에 기록됩니다. 배포 단계에서 따로 실행할 명령은 없습니다.
@@ -142,6 +160,8 @@ pnpm run deploy
 
 # 3. 시크릿 등록
 npx wrangler secret put GITHUB_TOKEN
+# (선택) 수집 실패 알림을 받을 웹훅 URL (Discord, Slack, ntfy 등)
+# npx wrangler secret put ALERT_WEBHOOK_URL
 # (선택) Cloudflare Access로 보호한 경우에만
 # npx wrangler secret put SHOW_PRIVATE_REPOS
 ```

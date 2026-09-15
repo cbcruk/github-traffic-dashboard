@@ -1,7 +1,17 @@
 import { createServerFn } from '@tanstack/react-start'
 import { allOrEmpty } from './db'
+import {
+  assessCollection,
+  loadRecentRuns,
+  type CollectionStatus,
+} from './collection-health'
 import { getDb } from './env'
 import type { RepoTraffic, DailyTraffic } from './github.types'
+
+export interface PublicCollectionStatus {
+  status: CollectionStatus
+  lastStartedAt: string | null
+}
 
 /**
  * Repos the dashboard may show: owned as of the newest collection that listed
@@ -206,6 +216,27 @@ export const getHistoricalTraffic = createServerFn().handler(
     } catch (error) {
       console.error('Failed to fetch historical traffic:', error)
       return []
+    }
+  },
+)
+
+/**
+ * Collection status for the public page: the verdict and when the last run
+ * started, nothing more. Problem details can name private repositories and
+ * run counts would reveal how many exist, so those only go to the webhook.
+ */
+export const getCollectionStatus = createServerFn().handler(
+  async (): Promise<PublicCollectionStatus | null> => {
+    try {
+      const db = await getDb()
+      const { status, lastRun } = assessCollection(
+        await loadRecentRuns(db),
+        new Date(),
+      )
+      return { status, lastStartedAt: lastRun?.startedAt ?? null }
+    } catch (error) {
+      console.error('Failed to fetch collection status:', error)
+      return null
     }
   },
 )
