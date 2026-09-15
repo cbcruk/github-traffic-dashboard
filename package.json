@@ -17,12 +17,12 @@
     "db:collect": "tsx scripts/collect-traffic.ts",
     "deploy": "vite build && wrangler deploy",
     "cf:preview": "vite build && wrangler dev",
-    "cf:tail": "wrangler tail"
+    "cf:tail": "wrangler tail",
+    "db:export-turso": "tsx scripts/export-turso.ts"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.5.2",
     "@astryxdesign/theme-neutral": "^0.5.2",
-    "@libsql/client": "^0.17.0",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",
     "@tanstack/react-router-devtools": "^1.132.0",
@@ -39,6 +39,7 @@
   "devDependencies": {
     "@astryxdesign/cli": "^0.5.2",
     "@cloudflare/workers-types": "^5.20260715.1",
+    "@libsql/client": "^0.17.0",
     "@tanstack/devtools-vite": "^0.3.11",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",

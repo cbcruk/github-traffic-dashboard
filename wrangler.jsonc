@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Nitro generates the Worker name, entry point and assets binding at build
+  // time (.output/server/wrangler.json) and merges the settings below into it.
+  // `pnpm dev` and the scripts in scripts/ read this file for local bindings.
+
+  // Daily at 00:00 UTC. Cloudflare cron triggers are not disabled by
+  // repository inactivity (unlike GitHub Actions schedules).
+  "triggers": {
+    "crons": ["0 0 * * *"],
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // No database_id on purpose: `wrangler deploy` binds the database with
+      // this name, creating it on the first deploy if it does not exist.
+      "database_name": "github-traffic-dashboard",
+    },
+  ],
+}

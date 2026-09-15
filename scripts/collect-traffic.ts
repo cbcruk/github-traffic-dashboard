@@ -1,10 +1,13 @@
 import 'dotenv/config'
 import { collectTraffic } from '../src/lib/collect-traffic'
+import { withLocalDb } from './local-db'
 
 async function main(): Promise<void> {
-  console.log('Starting traffic data collection...')
+  console.log('Starting traffic data collection into the local D1 database...')
 
-  const result = await collectTraffic({ log: (msg) => console.log(msg) })
+  const result = await withLocalDb((db) =>
+    collectTraffic({ db, log: (msg) => console.log(msg) }),
+  )
 
   console.log(
     `Traffic data collection completed in ${(result.durationMs / 1000).toFixed(1)}s! ` +
@@ -15,4 +18,7 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(console.error)
+main().catch((error) => {
+  console.error(error)
+  process.exitCode = 1
+})
