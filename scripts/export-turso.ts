@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { writeFile } from 'node:fs/promises'
 import { createClient, type Value } from '@libsql/client'
-import { SCHEMA_STATEMENTS } from '../src/lib/schema'
+import { INITIAL_SCHEMA } from '../src/lib/schema'
 
 /**
  * One-time export of a Turso database into a SQL file D1 can import.
@@ -12,8 +12,9 @@ import { SCHEMA_STATEMENTS } from '../src/lib/schema'
  *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... pnpm db:export-turso
  *   npx wrangler d1 execute github-traffic-dashboard --remote --file=turso-export.sql
  *
- * The file starts with the current schema, so it can be imported into an empty
- * database, and rows keep their original ids.
+ * The file starts with the initial schema, so it can be imported into an empty
+ * database, and rows keep their original ids. The Worker applies any later
+ * migrations on its first request.
  */
 
 const TABLES = [
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
 
   const client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN })
   const output = process.argv[2] ?? 'turso-export.sql'
-  const lines = SCHEMA_STATEMENTS.map((sql) => `${sql};`)
+  const lines = INITIAL_SCHEMA.map((sql) => `${sql};`)
 
   for (const table of TABLES) {
     let result

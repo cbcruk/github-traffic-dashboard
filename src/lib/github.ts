@@ -12,8 +12,8 @@ import type { RepoTraffic, DailyTraffic } from './github.types'
  * rather than a fixed cutoff means a stalled collector narrows nothing.
  *
  * This fails closed: `private = 0` excludes repos whose visibility has not
- * been recorded yet, and a database the collector has not migrated makes the
- * query error, so the page renders empty instead of exposing private repos.
+ * been recorded yet, and a schema that could not be migrated makes the query
+ * error, so the page renders empty instead of exposing private repos.
  */
 function visibleReposQuery(): string {
   const showPrivate = process.env.SHOW_PRIVATE_REPOS === 'true'
@@ -28,7 +28,7 @@ function visibleReposQuery(): string {
 export const getAllReposTraffic = createServerFn().handler(
   async (): Promise<RepoTraffic[]> => {
     try {
-      const db = getDb()
+      const db = await getDb()
 
       // GitHub's window is 14 days including today, so it reaches back 13.
       const { results: dailyRows } = await db
@@ -181,7 +181,7 @@ export const getAllReposTraffic = createServerFn().handler(
 export const getHistoricalTraffic = createServerFn().handler(
   async (): Promise<DailyTraffic[]> => {
     try {
-      const db = getDb()
+      const db = await getDb()
 
       const { results } = await db
         .prepare(
