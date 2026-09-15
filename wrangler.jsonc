@@ -4,10 +4,15 @@
   // time (.output/server/wrangler.json) and merges the settings below into it.
   // `pnpm dev` and the scripts in scripts/ read this file for local bindings.
 
-  // Daily at 00:00 UTC. Cloudflare cron triggers are not disabled by
-  // repository inactivity (unlike GitHub Actions schedules).
+  // Collection daily at 00:00 UTC. Cloudflare cron triggers are not disabled
+  // by repository inactivity (unlike GitHub Actions schedules).
+  //
+  // "0 6 * * *" is the health check, which alerts ALERT_WEBHOOK_URL when
+  // recent runs failed. It is matched by value (HEALTH_CHECK_CRON in
+  // src/lib/collection-health.ts), so change both together; any other
+  // expression here collects.
   "triggers": {
-    "crons": ["0 0 * * *"],
+    "crons": ["0 0 * * *", "0 6 * * *"],
   },
 
   "d1_databases": [

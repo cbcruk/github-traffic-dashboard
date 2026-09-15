@@ -14,7 +14,12 @@ import { Selector } from '@astryxdesign/core/Selector'
 import { Text } from '@astryxdesign/core/Text'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { VStack } from '@astryxdesign/core/VStack'
-import { getAllReposTraffic } from '../lib/github'
+import {
+  getAllReposTraffic,
+  getCollectionStatus,
+  type PublicCollectionStatus,
+} from '../lib/github'
+import { CollectionStatus } from '../components/collection-status'
 import { RepoTrafficCard } from '../components/repo-traffic-card'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
@@ -45,13 +50,18 @@ export const Route = createFileRoute('/')({
       : undefined,
     showEmpty: search.showEmpty === true || search.showEmpty === 'true',
   }),
-  loader: async (): Promise<RepoTraffic[]> => {
-    try {
-      return await getAllReposTraffic()
-    } catch (error) {
-      console.error('Failed to fetch traffic data:', error)
-      return []
-    }
+  loader: async (): Promise<{
+    repos: RepoTraffic[]
+    collection: PublicCollectionStatus | null
+  }> => {
+    const [repos, collection] = await Promise.all([
+      getAllReposTraffic().catch((error) => {
+        console.error('Failed to fetch traffic data:', error)
+        return []
+      }),
+      getCollectionStatus().catch(() => null),
+    ])
+    return { repos, collection }
   },
   component: Dashboard,
 })
@@ -70,7 +80,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function Dashboard() {
-  const trafficData = Route.useLoaderData()
+  const { repos: trafficData, collection } = Route.useLoaderData()
   const { q, sort, showEmpty } = Route.useSearch()
   const navigate = useNavigate({ from: '/' })
 
@@ -113,6 +123,7 @@ function Dashboard() {
               <Text type="supporting">
                 Traffic statistics for your repositories (last 14 days)
               </Text>
+              <CollectionStatus status={collection} />
             </VStack>
             <HStack gap={2} vAlign="center">
               <Link href="/history" isStandalone>
