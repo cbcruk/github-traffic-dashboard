@@ -16,7 +16,8 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 - [TanStack Router](https://tanstack.com/router) - Type-safe routing
 - [Astryx](https://astryx.atmeta.com) - UI components, layout, and theming
 - [Recharts](https://recharts.org) - Charts
-- [Turso](https://turso.tech) - Edge SQLite database
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) - 앱 호스팅과 cron 수집
+- [Cloudflare D1](https://developers.cloudflare.com/d1/) - SQLite 데이터베이스
 
 ## Getting Started
 
@@ -24,6 +25,7 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 
 - Node.js 20+
 - pnpm
+- Cloudflare 계정 (배포 시 Workers Paid 플랜 필요, [제한 사항](#cloudflare-제한-사항) 참고)
 
 ### Installation
 
@@ -40,10 +42,6 @@ cp .env.example .env
 `.env` 파일에 환경 변수 설정:
 
 ```
-# Turso Database
-TURSO_DATABASE_URL=libsql://your-database.turso.io
-TURSO_AUTH_TOKEN=your-auth-token
-
 # GitHub Token
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
@@ -51,20 +49,14 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 # SHOW_PRIVATE_REPOS=true
 ```
 
-> - Turso 데이터베이스는 [turso.tech](https://turso.tech)에서 무료로 생성 가능
-> - GitHub Token은 `repo` scope가 필요합니다. [GitHub Settings](https://github.com/settings/tokens)에서 생성
+> GitHub Token은 `repo` scope가 필요합니다. [GitHub Settings](https://github.com/settings/tokens)에서 생성
 
 ### Database Setup
 
+로컬 개발에는 별도 데이터베이스가 필요 없습니다. `pnpm dev`와 `pnpm db:*` 스크립트는 [`wrangler.jsonc`](./wrangler.jsonc)의 D1 binding을 wrangler 로컬 에뮬레이션(`.wrangler/state`)으로 실행합니다.
+
 ```bash
-# Turso CLI로 데이터베이스 생성
-turso db create github-traffic
-turso db tokens create github-traffic
-
-# 테이블 초기화
-pnpm db:init
-
-# 트래픽 데이터 수집
+# 로컬 D1에 트래픽 데이터 수집 (테이블은 자동 생성)
 pnpm db:collect
 ```
 
@@ -78,23 +70,23 @@ http://localhost:3000 에서 확인
 
 ## Scripts
 
-| Script            | Description                       |
-| ----------------- | --------------------------------- |
-| `pnpm dev`        | 개발 서버 실행                    |
-| `pnpm build`      | 프로덕션 빌드                     |
-| `pnpm preview`    | 빌드 미리보기                     |
-| `pnpm test`       | 테스트 실행                       |
-| `pnpm format`     | Prettier 포맷 적용                |
-| `pnpm db:init`    | Turso 데이터베이스 테이블 초기화  |
-| `pnpm db:collect` | GitHub API에서 트래픽 데이터 수집 |
+| Script            | Description                  |
+| ----------------- | ---------------------------- |
+| `pnpm dev`        | 개발 서버 실행               |
+| `pnpm build`      | 프로덕션 빌드                |
+| `pnpm preview`    | 빌드 미리보기                |
+| `pnpm test`       | 테스트 실행                  |
+| `pnpm format`     | Prettier 포맷 적용           |
+| `pnpm db:init`    | 로컬 D1 테이블 초기화        |
+| `pnpm db:collect` | 로컬 D1에 트래픽 데이터 수집 |
 
 ## Data Collection (Cloudflare Cron)
 
-대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 매일 UTC 00:00에 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 GitHub API에서 트래픽을 수집해 Turso에 저장합니다.
+대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 매일 UTC 00:00에 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 GitHub API에서 트래픽을 수집해 D1에 저장합니다.
 
 > GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화됩니다. Cloudflare cron 트리거에는 이 제한이 없습니다.
 
-수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. 레포지토리는 기본 6개씩 병렬로 처리하고, 한 레포의 모든 행은 한 번의 batch 트랜잭션으로 기록합니다.
+수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. 레포지토리는 기본 6개씩 병렬로 처리하고, 한 레포의 모든 행은 테이블별 multi-row upsert로 묶어 한 번의 D1 batch로 기록합니다.
 
 수집 대상은 GitHub Traffic API의 네 엔드포인트(views, clones, popular/referrers, popular/paths)입니다. views와 clones는 같은 14일 윈도우를 쓰므로 날짜 기준으로 병합해 `daily_traffic` 한 행에 저장하고, referrers와 paths는 14일 롤링 집계라 수집일 스냅샷으로 `referrers`, `popular_paths`에 남깁니다.
 
@@ -102,25 +94,23 @@ http://localhost:3000 에서 확인
 
 실행 이력은 `collection_runs` 테이블에 기록됩니다. 실행 시작 시 행이 만들어지고 완료 시 `finished_at`, `duration_ms`, 성공/실패 레포 수가 채워지므로, `finished_at`이 NULL인 행은 중간에 중단된 실행을 뜻합니다. GitHub은 트래픽이 없는 날도 0으로 돌려주기 때문에 이 테이블 없이는 "수집 실패"와 "트래픽 0"을 구분할 수 없습니다.
 
-cron 스케줄과 Cloudflare 프리셋은 [`vite.config.ts`](./vite.config.ts)의 Nitro 설정(`cloudflare.wrangler.triggers`)에 정의됩니다.
+cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의됩니다. Nitro가 빌드 시 생성하는 Worker 설정(`.output/server/wrangler.json`)에 이 파일이 병합됩니다.
 
-### 수동 수집 (fallback)
-
-GitHub Actions에 `workflow_dispatch` 전용 워크플로우가 남아 있습니다: Actions > Collect Traffic Data > Run workflow. 이 경우 Repository Secrets에 `TRAFFIC_GITHUB_TOKEN`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`이 필요합니다. 로컬에서는 `pnpm db:collect`로도 수집할 수 있습니다.
+테이블은 매 수집 시작 시 자동으로 생성·갱신되므로 배포 환경에서 따로 초기화할 필요가 없습니다.
 
 ## Project Structure
 
 ```
 ├── scripts/
-│   ├── init-db.ts          # DB 초기화 스크립트
-│   └── collect-traffic.ts  # 데이터 수집 CLI
+│   ├── init-db.ts          # 로컬 D1 초기화
+│   ├── collect-traffic.ts  # 로컬 D1 수집 CLI
+│   └── export-turso.ts     # Turso → D1 일회성 이관
 ├── src/
 │   ├── components/         # React 컴포넌트
 │   ├── lib/                # 유틸리티, DB 클라이언트, 수집 로직
 │   ├── nitro/              # Nitro 서버 플러그인 (cron 수집)
 │   └── routes/             # 페이지 라우트
-└── .github/
-    └── workflows/          # GitHub Actions (수동 fallback)
+└── wrangler.jsonc          # D1 binding, cron 트리거
 ```
 
 ## Private 레포
@@ -139,17 +129,16 @@ private 레포까지 보려면 먼저 [Cloudflare Access](https://developers.clo
 # 1. Cloudflare 로그인
 npx wrangler login
 
-# 2. 시크릿 등록 (빌드 후 생성되는 Worker에 적용됨)
-pnpm build
+# 2. 빌드 + 배포 (D1 데이터베이스와 cron 트리거가 함께 등록됨)
+pnpm run deploy
+
+# 3. 시크릿 등록
 npx wrangler secret put GITHUB_TOKEN
-npx wrangler secret put TURSO_DATABASE_URL
-npx wrangler secret put TURSO_AUTH_TOKEN
 # (선택) Cloudflare Access로 보호한 경우에만
 # npx wrangler secret put SHOW_PRIVATE_REPOS
-
-# 3. 빌드 + 배포 (cron 트리거가 함께 등록됨)
-pnpm run deploy
 ```
+
+`wrangler.jsonc`에는 `database_id`가 없습니다. 첫 배포 때 wrangler가 `github-traffic-dashboard`라는 이름의 D1 데이터베이스를 찾아 연결하고, 없으면 새로 만듭니다. 로컬에서 배포하면 wrangler가 생성된 ID를 `wrangler.jsonc`에 적어줄 수 있는데, 커밋하지 않아도 이후 배포는 계속 동작합니다.
 
 > `pnpm deploy`는 pnpm 내장 명령과 충돌하므로 반드시 `pnpm run deploy`로 실행하세요.
 
@@ -160,6 +149,33 @@ pnpm run deploy
 | `pnpm cf:tail`    | 배포된 Worker 실시간 로그             |
 
 > 배포 후 Cloudflare 대시보드 > Workers > 해당 Worker > Settings > Triggers에서 cron 등록을 확인할 수 있습니다. `GITHUB_TOKEN`은 `repo` scope PAT여야 합니다.
+
+### Cloudflare 제한 사항
+
+수집은 cron 호출 한 번 안에서 끝나야 하므로 **Workers Paid 플랜**이 필요합니다. 무료 플랜은 호출당 subrequest 50개, D1 쿼리 50개로 제한되어 레포 몇 개만 처리할 수 있습니다.
+
+Paid 플랜에서도 D1은 호출당 쿼리 1000개로 제한됩니다. 레포 하나에 쿼리 최대 4개를 쓰므로, 한 번에 수집할 수 있는 레포는 약 240개입니다. 이를 넘으면 실행이 도중에 실패하고 `collection_runs.finished_at`이 NULL로 남습니다.
+
+### Turso에서 옮기기
+
+D1 전환 이전에 Turso로 수집하던 배포는 기존 데이터를 한 번 옮겨야 합니다. GitHub은 트래픽을 14일만 보관하므로 그보다 오래된 기록은 Turso에만 있습니다.
+
+```bash
+# 1. D1 데이터베이스를 먼저 만들어 둡니다 (배포 시 이 이름으로 연결됨)
+npx wrangler d1 create github-traffic-dashboard
+
+# 2. Turso 데이터를 SQL 파일로 내보냅니다 (스키마 포함)
+TURSO_DATABASE_URL=libsql://... TURSO_AUTH_TOKEN=... pnpm db:export-turso
+
+# 3. D1으로 가져옵니다
+npx wrangler d1 execute github-traffic-dashboard --remote --file=turso-export.sql
+
+# 4. 배포 후 Turso 시크릿 삭제
+npx wrangler secret delete TURSO_DATABASE_URL
+npx wrangler secret delete TURSO_AUTH_TOKEN
+```
+
+내보내기와 배포 사이에 cron(UTC 00:00)이 Turso에 한 번 더 기록하면 그날의 referrers/paths 스냅샷만 D1에서 빠집니다. 일별 트래픽은 다음 수집이 최근 14일을 다시 채웁니다.
 
 ## License
 

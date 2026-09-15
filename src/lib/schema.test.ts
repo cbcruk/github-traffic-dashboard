@@ -1,44 +1,56 @@
-import { createClient } from '@libsql/client'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { migrateSchema } from './schema'
+import { createTestDb } from './test-d1'
 
-async function columnsOf(
-  client: ReturnType<typeof createClient>,
-  table: string,
-) {
-  const { rows } = await client.execute(`PRAGMA table_info(${table})`)
-  return rows.map((row) => row.name)
+async function columnsOf(db: D1Database, table: string) {
+  const { results } = await db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all<{ name: string }>()
+  return results.map((row) => row.name)
 }
 
 describe('migrateSchema', () => {
+  let dispose: (() => Promise<void>) | undefined
+
+  afterEach(async () => {
+    await dispose?.()
+  })
+
   it('adds `private` to a repositories table created before it existed', async () => {
-    const client = createClient({ url: ':memory:' })
-    await client.execute(`
-      CREATE TABLE repositories (
-        repo TEXT PRIMARY KEY,
-        first_seen TEXT NOT NULL,
-        last_seen TEXT NOT NULL
-      )
-    `)
-    await client.execute(
-      `INSERT INTO repositories VALUES ('me/secret', '2026-09-01', '2026-09-01')`,
-    )
+    const test = await createTestDb()
+    dispose = test.dispose
+    const { db } = test
 
-    await migrateSchema(client)
+    await db.batch([
+      db.prepare(`
+        CREATE TABLE repositories (
+          repo TEXT PRIMARY KEY,
+          first_seen TEXT NOT NULL,
+          last_seen TEXT NOT NULL
+        )
+      `),
+      db.prepare(
+        `INSERT INTO repositories VALUES ('me/secret', '2026-09-01', '2026-09-01')`,
+      ),
+    ])
 
-    expect(await columnsOf(client, 'repositories')).toContain('private')
-    const { rows } = await client.execute(`SELECT private FROM repositories`)
+    await migrateSchema(db)
+
+    expect(await columnsOf(db, 'repositories')).toContain('private')
     // Unknown visibility stays NULL, which readers treat as private.
-    expect(rows[0].private).toBeNull()
+    expect(
+      await db.prepare(`SELECT private FROM repositories`).first('private'),
+    ).toBeNull()
   })
 
   it('is safe to run repeatedly', async () => {
-    const client = createClient({ url: ':memory:' })
+    const test = await createTestDb()
+    dispose = test.dispose
 
-    await migrateSchema(client)
-    await migrateSchema(client)
+    await migrateSchema(test.db)
+    await migrateSchema(test.db)
 
-    const columns = await columnsOf(client, 'repositories')
+    const columns = await columnsOf(test.db, 'repositories')
     expect(columns.filter((name) => name === 'private')).toHaveLength(1)
   })
 })

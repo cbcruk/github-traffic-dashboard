@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
-import { executeOrEmpty, getDbClient } from './db'
+import { allOrEmpty } from './db'
+import { getDb } from './env'
 import type { RepoTraffic, DailyTraffic } from './github.types'
 
 /**
@@ -27,10 +28,12 @@ function visibleReposQuery(): string {
 export const getAllReposTraffic = createServerFn().handler(
   async (): Promise<RepoTraffic[]> => {
     try {
-      const client = getDbClient()
+      const db = getDb()
 
       // GitHub's window is 14 days including today, so it reaches back 13.
-      const result = await client.execute(`
+      const { results: dailyRows } = await db
+        .prepare(
+          `
         SELECT
           repo,
           date,
@@ -42,11 +45,13 @@ export const getAllReposTraffic = createServerFn().handler(
         WHERE date >= date('now', '-13 days')
           AND repo IN (${visibleReposQuery()})
         ORDER BY repo, date
-      `)
+      `,
+        )
+        .all()
 
       const repoMap = new Map<string, RepoTraffic>()
 
-      for (const row of result.rows) {
+      for (const row of dailyRows) {
         const repo = row.repo as string
         const date = row.date as string
 
@@ -90,8 +95,8 @@ export const getAllReposTraffic = createServerFn().handler(
       // Window-level aggregates as GitHub reported them. Counts stay as the
       // daily sums above so the numbers match the chart beside them; only the
       // uniques, which are not additive, come from the snapshot.
-      const totalsRows = await executeOrEmpty(
-        client,
+      const totalsRows = await allOrEmpty(
+        db,
         `
         SELECT t.repo, t.view_uniques, t.clone_uniques
         FROM traffic_totals t
@@ -114,8 +119,8 @@ export const getAllReposTraffic = createServerFn().handler(
       // GitHub's referrers and paths endpoints already return a rolling 14-day
       // aggregate, so each collected row is a full snapshot — summing multiple
       // days would multiply the counts. Use only the most recent per repo.
-      const referrerRows = await executeOrEmpty(
-        client,
+      const referrerRows = await allOrEmpty(
+        db,
         `
         SELECT r.repo, r.referrer, r.count, r.uniques
         FROM referrers r
@@ -139,8 +144,8 @@ export const getAllReposTraffic = createServerFn().handler(
         }
       }
 
-      const pathRows = await executeOrEmpty(
-        client,
+      const pathRows = await allOrEmpty(
+        db,
         `
         SELECT p.repo, p.path, p.title, p.count, p.uniques
         FROM popular_paths p
@@ -176,17 +181,21 @@ export const getAllReposTraffic = createServerFn().handler(
 export const getHistoricalTraffic = createServerFn().handler(
   async (): Promise<DailyTraffic[]> => {
     try {
-      const client = getDbClient()
+      const db = getDb()
 
-      const result = await client.execute(`
+      const { results } = await db
+        .prepare(
+          `
         SELECT repo, date, views, visitors, clones, clone_uniques as cloneUniques
         FROM daily_traffic
         WHERE date >= date('now', '-90 days')
           AND repo IN (${visibleReposQuery()})
         ORDER BY date DESC
-      `)
+      `,
+        )
+        .all()
 
-      return result.rows.map((row) => ({
+      return results.map((row) => ({
         repo: row.repo as string,
         date: row.date as string,
         views: row.views as number,

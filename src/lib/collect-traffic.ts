@@ -1,6 +1,5 @@
-import { getDbClient, type DbConfig } from './db'
+import { buildUpsert, runBatch, type Statement } from './db'
 import { migrateSchema } from './schema'
-import type { Client, InStatement } from '@libsql/client/web'
 
 const GITHUB_API_BASE = 'https://api.github.com'
 
@@ -71,8 +70,8 @@ export interface CollectOptions {
   concurrency?: number
   /** GitHub token. Falls back to process.env.GITHUB_TOKEN. */
   githubToken?: string
-  /** Turso connection. Falls back to process.env.TURSO_*. */
-  turso?: DbConfig
+  /** The D1 database to write to. */
+  db: D1Database
 }
 
 function buildHeaders(token: string): HeadersInit {
@@ -177,7 +176,7 @@ export function buildRepoStatements(
   repo: string,
   collectedOn: string,
   { views, clones, referrers, paths }: RepoTrafficSnapshot,
-): InStatement[] {
+): Statement[] {
   interface DailyRow {
     views: number
     visitors: number
@@ -209,83 +208,76 @@ export function buildRepoStatements(
     row.cloneUniques = clone.uniques
   }
 
-  const statements: InStatement[] = []
-
   // Window-level aggregates straight from GitHub. `uniques` is deduplicated
   // across the whole 14-day window, so summing the daily rows would overstate
   // it; this snapshot is the only place the real figure exists.
-  statements.push({
-    sql: `
-      INSERT INTO traffic_totals (repo, date, views, view_uniques, clones, clone_uniques)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(repo, date) DO UPDATE SET
-        views = excluded.views,
-        view_uniques = excluded.view_uniques,
-        clones = excluded.clones,
-        clone_uniques = excluded.clone_uniques
-    `,
-    args: [
-      repo,
-      collectedOn,
-      views.count,
-      views.uniques,
-      clones.count,
-      clones.uniques,
+  const totals = buildUpsert({
+    table: 'traffic_totals',
+    columns: [
+      'repo',
+      'date',
+      'views',
+      'view_uniques',
+      'clones',
+      'clone_uniques',
+    ],
+    conflict: ['repo', 'date'],
+    rows: [
+      [
+        repo,
+        collectedOn,
+        views.count,
+        views.uniques,
+        clones.count,
+        clones.uniques,
+      ],
     ],
   })
 
-  for (const [date, row] of daily) {
-    statements.push({
-      sql: `
-        INSERT INTO daily_traffic (repo, date, views, visitors, clones, clone_uniques)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(repo, date) DO UPDATE SET
-          views = excluded.views,
-          visitors = excluded.visitors,
-          clones = excluded.clones,
-          clone_uniques = excluded.clone_uniques
-      `,
-      args: [repo, date, row.views, row.visitors, row.clones, row.cloneUniques],
-    })
-  }
+  const dailyRows = buildUpsert({
+    table: 'daily_traffic',
+    columns: ['repo', 'date', 'views', 'visitors', 'clones', 'clone_uniques'],
+    conflict: ['repo', 'date'],
+    rows: Array.from(daily, ([date, row]) => [
+      repo,
+      date,
+      row.views,
+      row.visitors,
+      row.clones,
+      row.cloneUniques,
+    ]),
+  })
 
   // Referrers and paths are 14-day rolling aggregates rather than daily
   // figures, so each row is a snapshot stamped with the collection date.
-  for (const ref of referrers) {
-    statements.push({
-      sql: `
-        INSERT INTO referrers (repo, date, referrer, count, uniques)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(repo, date, referrer) DO UPDATE SET
-          count = excluded.count,
-          uniques = excluded.uniques
-      `,
-      args: [repo, collectedOn, ref.referrer, ref.count, ref.uniques],
-    })
-  }
+  const referrerRows = buildUpsert({
+    table: 'referrers',
+    columns: ['repo', 'date', 'referrer', 'count', 'uniques'],
+    conflict: ['repo', 'date', 'referrer'],
+    rows: referrers.map((ref) => [
+      repo,
+      collectedOn,
+      ref.referrer,
+      ref.count,
+      ref.uniques,
+    ]),
+  })
 
-  for (const path of paths) {
-    statements.push({
-      sql: `
-        INSERT INTO popular_paths (repo, date, path, title, count, uniques)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(repo, date, path) DO UPDATE SET
-          title = excluded.title,
-          count = excluded.count,
-          uniques = excluded.uniques
-      `,
-      args: [
-        repo,
-        collectedOn,
-        path.path,
-        path.title,
-        path.count,
-        path.uniques,
-      ],
-    })
-  }
+  const pathRows = buildUpsert({
+    table: 'popular_paths',
+    columns: ['repo', 'date', 'path', 'title', 'count', 'uniques'],
+    conflict: ['repo', 'date', 'path'],
+    rows: paths.map((path) => [
+      repo,
+      collectedOn,
+      path.path,
+      path.title,
+      path.count,
+      path.uniques,
+    ]),
+  })
 
-  return statements
+  return [...totals, ...dailyRows, ...referrerRows, ...pathRows]
 }
 
 /**
@@ -299,30 +291,32 @@ export function buildRepoStatements(
 export function buildRepositoryStatements(
   repos: Pick<Repository, 'full_name' | 'private'>[],
   collectedOn: string,
-): InStatement[] {
-  return repos.map((repo) => ({
-    sql: `
-      INSERT INTO repositories (repo, first_seen, last_seen, private)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(repo) DO UPDATE SET
-        last_seen = excluded.last_seen,
-        private = excluded.private
-    `,
-    args: [repo.full_name, collectedOn, collectedOn, repo.private ? 1 : 0],
-  }))
+): Statement[] {
+  return buildUpsert({
+    table: 'repositories',
+    columns: ['repo', 'first_seen', 'last_seen', 'private'],
+    conflict: ['repo'],
+    update: ['last_seen', 'private'],
+    rows: repos.map((repo) => [
+      repo.full_name,
+      collectedOn,
+      collectedOn,
+      repo.private ? 1 : 0,
+    ]),
+  })
 }
 
-async function startRun(client: Client, startedAt: string) {
-  const result = await client.execute({
-    sql: `INSERT INTO collection_runs (started_at) VALUES (?)`,
-    args: [startedAt],
-  })
-  return result.lastInsertRowid
+async function startRun(db: D1Database, startedAt: string): Promise<number> {
+  const result = await db
+    .prepare(`INSERT INTO collection_runs (started_at) VALUES (?)`)
+    .bind(startedAt)
+    .run()
+  return result.meta.last_row_id
 }
 
 async function finishRun(
-  client: Client,
-  runId: bigint | undefined,
+  db: D1Database,
+  runId: number,
   fields: {
     durationMs: number
     repos: number
@@ -331,16 +325,16 @@ async function finishRun(
     error?: string
   },
 ): Promise<void> {
-  if (runId === undefined) return
-
-  await client.execute({
-    sql: `
+  await db
+    .prepare(
+      `
       UPDATE collection_runs
       SET finished_at = ?, duration_ms = ?, repos = ?, succeeded = ?,
           failed = ?, failed_repos = ?, error = ?
       WHERE id = ?
     `,
-    args: [
+    )
+    .bind(
       new Date().toISOString(),
       fields.durationMs,
       fields.repos,
@@ -349,26 +343,28 @@ async function finishRun(
       fields.failed.join(',') || null,
       fields.error ?? null,
       runId,
-    ],
-  })
+    )
+    .run()
 }
 
 /**
- * Fetch traffic for every owned (non-fork) repository and upsert it into Turso.
+ * Fetch traffic for every owned (non-fork) repository and upsert it into D1.
  *
  * Shared by the CLI collector (`scripts/collect-traffic.ts`) and the Nitro
  * scheduled plugin (`src/nitro/scheduled.ts`) driven by Cloudflare cron.
  *
- * Each repository costs 4 GitHub GETs and a single batched write, and repos run
- * concurrently, so a full pass fits inside a Worker's cron invocation. Every
- * run is recorded in `collection_runs`; a run that dies mid-pass leaves its
- * `finished_at` NULL rather than failing silently.
+ * Each repository costs 4 GitHub GETs and one D1 batch of at most 4 statements,
+ * and repos run concurrently, so a full pass fits inside a Worker's cron
+ * invocation. D1 allows 1000 queries per invocation on Workers Paid; with the
+ * schema and run bookkeeping on top, that caps a run at roughly 240 repos.
+ * Every run is recorded in `collection_runs`; a run that dies mid-pass leaves
+ * its `finished_at` NULL rather than failing silently.
  *
- * Credentials come from `options`, falling back to `process.env` — the
- * Cloudflare hook passes them explicitly so no `process.env` is required there.
+ * The GitHub token comes from `options`, falling back to `process.env` — the
+ * Cloudflare hook passes it explicitly so no `process.env` is required there.
  */
 export async function collectTraffic(
-  options: CollectOptions = {},
+  options: CollectOptions,
 ): Promise<CollectResult> {
   const log = options.log ?? (() => {})
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
@@ -379,12 +375,12 @@ export async function collectTraffic(
   }
   const headers = buildHeaders(token)
 
-  const client = getDbClient(options.turso)
-  await migrateSchema(client)
+  const { db } = options
+  await migrateSchema(db)
 
   const startedAtMs = Date.now()
   const collectedOn = new Date(startedAtMs).toISOString().split('T')[0]
-  const runId = await startRun(client, new Date(startedAtMs).toISOString())
+  const runId = await startRun(db, new Date(startedAtMs).toISOString())
 
   const failed: string[] = []
   let repos: Repository[] = []
@@ -394,9 +390,7 @@ export async function collectTraffic(
     repos = await getMyRepos(headers)
     log(`Found ${repos.length} repositories`)
 
-    if (repos.length > 0) {
-      await client.batch(buildRepositoryStatements(repos, collectedOn), 'write')
-    }
+    await runBatch(db, buildRepositoryStatements(repos, collectedOn))
 
     await mapWithConcurrency(repos, concurrency, async (repo) => {
       try {
@@ -406,9 +400,7 @@ export async function collectTraffic(
           collectedOn,
           snapshot,
         )
-        if (statements.length > 0) {
-          await client.batch(statements, 'write')
-        }
+        await runBatch(db, statements)
         succeeded++
         log(`✓ ${repo.full_name} (${statements.length} rows)`)
       } catch (error) {
@@ -417,7 +409,7 @@ export async function collectTraffic(
       }
     })
   } catch (error) {
-    await finishRun(client, runId, {
+    await finishRun(db, runId, {
       durationMs: Date.now() - startedAtMs,
       repos: repos.length,
       succeeded,
@@ -428,7 +420,7 @@ export async function collectTraffic(
   }
 
   const durationMs = Date.now() - startedAtMs
-  await finishRun(client, runId, {
+  await finishRun(db, runId, {
     durationMs,
     repos: repos.length,
     succeeded,

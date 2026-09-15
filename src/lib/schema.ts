@@ -1,5 +1,3 @@
-import type { Client } from '@libsql/client/web'
-
 /**
  * Canonical database schema.
  *
@@ -98,15 +96,17 @@ const ADDED_COLUMNS = [
   { table: 'repositories', column: 'private', definition: 'INTEGER' },
 ]
 
-export async function migrateSchema(client: Client): Promise<void> {
-  await client.migrate(SCHEMA_STATEMENTS)
+export async function migrateSchema(db: D1Database): Promise<void> {
+  await db.batch(SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)))
 
   for (const { table, column, definition } of ADDED_COLUMNS) {
-    const { rows } = await client.execute(`PRAGMA table_info(${table})`)
-    if (!rows.some((row) => row.name === column)) {
-      await client.execute(
-        `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`,
-      )
+    const { results } = await db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all<{ name: string }>()
+    if (!results.some((row) => row.name === column)) {
+      await db
+        .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+        .run()
     }
   }
 }
