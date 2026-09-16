@@ -147,6 +147,32 @@ export const MIGRATIONS: Migration[] = [
         ? []
         : [`ALTER TABLE repositories ADD COLUMN private INTEGER`],
   },
+  {
+    version: 3,
+    name: 'batched_collection',
+    // Collection is spread over several cron invocations, so a run belongs to
+    // a collection date, tracks when its last batch wrote, and each repository
+    // is attempted once a day.
+    up: async (db) => [
+      ...((await hasColumn(db, 'collection_runs', 'collected_on'))
+        ? []
+        : [`ALTER TABLE collection_runs ADD COLUMN collected_on TEXT`]),
+      ...((await hasColumn(db, 'collection_runs', 'last_batch_at'))
+        ? []
+        : [`ALTER TABLE collection_runs ADD COLUMN last_batch_at TEXT`]),
+      `CREATE TABLE IF NOT EXISTS collection_attempts (
+        collected_on TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        attempted_at TEXT NOT NULL,
+        succeeded INTEGER NOT NULL,
+        PRIMARY KEY (collected_on, repo)
+      )`,
+      // Rows from before batching have a NULL collection date, which SQLite
+      // does not treat as a duplicate.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_collection_runs_collected_on
+         ON collection_runs(collected_on)`,
+    ],
+  },
 ]
 
 const TRACKING_TABLE = `CREATE TABLE IF NOT EXISTS schema_migrations (

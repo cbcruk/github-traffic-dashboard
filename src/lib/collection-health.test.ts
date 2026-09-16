@@ -15,6 +15,7 @@ const now = new Date('2026-09-16T06:00:00Z')
 function run(overrides: Partial<CollectionRun> = {}): CollectionRun {
   return {
     startedAt: '2026-09-16T00:00:00Z',
+    lastBatchAt: '2026-09-16T00:01:30Z',
     finishedAt: '2026-09-16T00:01:30Z',
     repos: 110,
     succeeded: 110,
@@ -37,22 +38,42 @@ describe('assessCollection', () => {
     expect(assessCollection([], now).status).toBe('never')
   })
 
-  it('treats a recent unfinished run as running', () => {
-    const started = run({
-      startedAt: '2026-09-16T05:50:00Z',
+  it('treats a run whose batches are still writing as running', () => {
+    // Batches spread over the morning: started hours ago, wrote a moment ago.
+    const batching = run({
+      lastBatchAt: '2026-09-16T05:50:00Z',
       finishedAt: null,
     })
 
-    expect(assessCollection([started], now).status).toBe('running')
+    expect(assessCollection([batching], now).status).toBe('running')
   })
 
-  it('fails a run that never finished', () => {
-    const killed = run({ finishedAt: null })
+  it('fails a run whose batches stopped partway', () => {
+    const stalled = run({
+      lastBatchAt: '2026-09-16T00:30:00Z',
+      finishedAt: null,
+    })
 
-    const health = assessCollection([killed], now)
+    const health = assessCollection([stalled], now)
 
     expect(health.status).toBe('failed')
-    expect(health.problems[0]).toMatch(/never finished/)
+    expect(health.problems[0]).toMatch(/stopped partway/)
+  })
+
+  it('fails an unfinished run from before batching, which has no batch time', () => {
+    const legacy = run({ lastBatchAt: null, finishedAt: null })
+
+    expect(assessCollection([legacy], now).status).toBe('failed')
+  })
+
+  it('fails an unfinished run that recorded an error, however recent', () => {
+    const errored = run({
+      lastBatchAt: '2026-09-16T05:59:00Z',
+      finishedAt: null,
+      error: 'GitHub API error: 401',
+    })
+
+    expect(assessCollection([errored], now).status).toBe('failed')
   })
 
   it('fails when the daily run did not start', () => {
@@ -149,7 +170,8 @@ describe('checkCollectionHealth', () => {
     await test.db
       .prepare(
         `INSERT INTO collection_runs
-           (started_at, finished_at, repos, succeeded, failed, failed_repos, error)
+           (started_at, last_batch_at, finished_at, repos, succeeded, failed,
+            failed_repos, error)
          VALUES ${values}`,
       )
       .run()
@@ -158,7 +180,7 @@ describe('checkCollectionHealth', () => {
 
   it('posts problems to the webhook', async () => {
     const db = await dbWithRun(
-      `('2026-09-16T00:00:00Z', NULL, 0, 0, 0, NULL, NULL)`,
+      `('2026-09-16T00:00:00Z', '2026-09-16T00:00:30Z', NULL, 0, 0, 0, NULL, NULL)`,
     )
     const sent: Request[] = []
 
@@ -179,7 +201,7 @@ describe('checkCollectionHealth', () => {
 
   it('stays quiet when collection is healthy', async () => {
     const db = await dbWithRun(
-      `('2026-09-16T00:00:00Z', '2026-09-16T00:01:30Z', 110, 110, 0, NULL, NULL)`,
+      `('2026-09-16T00:00:00Z', '2026-09-16T00:01:30Z', '2026-09-16T00:01:30Z', 110, 110, 0, NULL, NULL)`,
     )
     const sent: Request[] = []
 
@@ -198,7 +220,7 @@ describe('checkCollectionHealth', () => {
 
   it('surfaces a webhook that rejects the alert', async () => {
     const db = await dbWithRun(
-      `('2026-09-16T00:00:00Z', NULL, 0, 0, 0, NULL, NULL)`,
+      `('2026-09-16T00:00:00Z', '2026-09-16T00:00:30Z', NULL, 0, 0, 0, NULL, NULL)`,
     )
 
     await expect(

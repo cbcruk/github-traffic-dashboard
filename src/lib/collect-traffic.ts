@@ -57,9 +57,14 @@ interface RepoTrafficSnapshot {
 }
 
 export interface CollectResult {
+  /** Repositories owned on the collection date. */
   repos: number
+  /** Repositories this invocation collected. */
   succeeded: number
+  /** Repositories this invocation tried and failed. */
   failed: string[]
+  /** Repositories still waiting for a later invocation. */
+  pending: number
   durationMs: number
 }
 
@@ -72,7 +77,29 @@ export interface CollectOptions {
   githubToken?: string
   /** The D1 database to write to. */
   db: D1Database
+  /**
+   * Repositories to collect in this invocation. Omit to collect every
+   * repository still pending for the day.
+   */
+  batchSize?: number
+  /** Collect every repository again, even ones already attempted today. */
+  force?: boolean
+  /** Overridable for tests. */
+  now?: Date
+  /** Overridable for tests. Defaults to global fetch. */
+  fetch?: Fetch
 }
+
+/**
+ * Repositories per cron invocation.
+ *
+ * Cloudflare's free plan allows 50 subrequests and 50 D1 queries per
+ * invocation. A batch spends 4 GitHub GETs and at most 4 D1 statements per
+ * repository, plus 2 GETs for the repository listing on the day's first batch,
+ * which leaves room at 7. Collection therefore spreads over the day's
+ * invocations instead of stopping partway, as it did on 2026-09-15 and 16.
+ */
+export const CRON_BATCH_SIZE = 7
 
 function buildHeaders(token: string): HeadersInit {
   return {
@@ -90,9 +117,15 @@ function buildHeaders(token: string): HeadersInit {
  * Running repos in parallel makes bursts likelier than the old serial loop did,
  * and GitHub signals those with `Retry-After` on a 403 or 429.
  */
-async function githubJson<T>(url: string, headers: HeadersInit): Promise<T> {
+type Fetch = (request: Request) => Promise<Response>
+
+async function githubJson<T>(
+  url: string,
+  headers: HeadersInit,
+  send: Fetch,
+): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, { headers })
+    const res = await send(new Request(url, { headers }))
     if (res.ok) return (await res.json()) as T
 
     const retryAfter = res.headers.get('retry-after')
@@ -129,7 +162,10 @@ async function mapWithConcurrency<T>(
   )
 }
 
-async function getMyRepos(headers: HeadersInit): Promise<Repository[]> {
+async function getMyRepos(
+  headers: HeadersInit,
+  send: Fetch,
+): Promise<Repository[]> {
   const perPage = 100
   const allRepos: Repository[] = []
 
@@ -139,6 +175,7 @@ async function getMyRepos(headers: HeadersInit): Promise<Repository[]> {
     const repos = await githubJson<Repository[]>(
       `${GITHUB_API_BASE}/user/repos?per_page=${perPage}&page=${page}&sort=full_name&direction=asc&affiliation=owner`,
       headers,
+      send,
     )
     allRepos.push(...repos)
 
@@ -152,14 +189,15 @@ async function getMyRepos(headers: HeadersInit): Promise<Repository[]> {
 async function fetchRepoTraffic(
   repo: string,
   headers: HeadersInit,
+  send: Fetch,
 ): Promise<RepoTrafficSnapshot> {
   const base = `${GITHUB_API_BASE}/repos/${repo}/traffic`
 
   const [views, clones, referrers, paths] = await Promise.all([
-    githubJson<ViewsResponse>(`${base}/views`, headers),
-    githubJson<ClonesResponse>(`${base}/clones`, headers),
-    githubJson<Referrer[]>(`${base}/popular/referrers`, headers),
-    githubJson<PopularPath[]>(`${base}/popular/paths`, headers),
+    githubJson<ViewsResponse>(`${base}/views`, headers, send),
+    githubJson<ClonesResponse>(`${base}/clones`, headers, send),
+    githubJson<Referrer[]>(`${base}/popular/referrers`, headers, send),
+    githubJson<PopularPath[]>(`${base}/popular/paths`, headers, send),
   ])
 
   return { views, clones, referrers, paths }
@@ -306,59 +344,152 @@ export function buildRepositoryStatements(
   })
 }
 
-async function startRun(db: D1Database, startedAt: string): Promise<number> {
-  const result = await db
-    .prepare(`INSERT INTO collection_runs (started_at) VALUES (?)`)
-    .bind(startedAt)
-    .run()
-  return result.meta.last_row_id
+/** The day's run row, created on its first batch. */
+interface Run {
+  id: number
+  startedAt: string
+  finishedAt: string | null
 }
 
-async function finishRun(
+async function ensureRun(
   db: D1Database,
-  runId: number,
+  collectedOn: string,
+  now: Date,
+): Promise<Run> {
+  const existing = await db
+    .prepare(
+      `SELECT id, started_at AS startedAt, finished_at AS finishedAt
+       FROM collection_runs WHERE collected_on = ?`,
+    )
+    .bind(collectedOn)
+    .first<Run>()
+  if (existing) return existing
+
+  const startedAt = now.toISOString()
+  const { meta } = await db
+    .prepare(
+      `INSERT INTO collection_runs (started_at, collected_on, last_batch_at)
+       VALUES (?, ?, ?)`,
+    )
+    .bind(startedAt, collectedOn, startedAt)
+    .run()
+  return { id: meta.last_row_id, startedAt, finishedAt: null }
+}
+
+/** Repositories owned on `collectedOn` that no batch has attempted yet. */
+async function pendingRepos(
+  db: D1Database,
+  collectedOn: string,
+  limit: number,
+  force: boolean,
+): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `
+      SELECT repo FROM repositories
+      WHERE last_seen = ?1
+        ${force ? '' : `AND repo NOT IN (SELECT repo FROM collection_attempts WHERE collected_on = ?1)`}
+      ORDER BY repo
+      LIMIT ?2
+    `,
+    )
+    .bind(collectedOn, limit)
+    .all<{ repo: string }>()
+  return results.map((row) => row.repo)
+}
+
+async function countRepos(
+  db: D1Database,
+  sql: string,
+  collectedOn: string,
+): Promise<number> {
+  return (await db.prepare(sql).bind(collectedOn).first<number>('n')) ?? 0
+}
+
+function buildAttemptStatements(
+  collectedOn: string,
+  attemptedAt: string,
+  outcomes: { repo: string; succeeded: boolean }[],
+): Statement[] {
+  return buildUpsert({
+    table: 'collection_attempts',
+    columns: ['collected_on', 'repo', 'attempted_at', 'succeeded'],
+    conflict: ['collected_on', 'repo'],
+    rows: outcomes.map(({ repo, succeeded }) => [
+      collectedOn,
+      repo,
+      attemptedAt,
+      succeeded ? 1 : 0,
+    ]),
+  })
+}
+
+/** Fold one batch's outcome into the day's run row. */
+async function recordBatch(
+  db: D1Database,
+  run: Run,
   fields: {
-    durationMs: number
+    now: Date
     repos: number
     succeeded: number
     failed: string[]
-    error?: string
+    done: boolean
+    error?: string | null
   },
 ): Promise<void> {
+  const now = fields.now.toISOString()
   await db
     .prepare(
       `
       UPDATE collection_runs
-      SET finished_at = ?, duration_ms = ?, repos = ?, succeeded = ?,
-          failed = ?, failed_repos = ?, error = ?
+      SET repos = ?,
+          succeeded = succeeded + ?,
+          failed = failed + ?,
+          failed_repos = CASE
+            WHEN ? = '' THEN failed_repos
+            WHEN failed_repos IS NULL THEN ?
+            ELSE failed_repos || ',' || ?
+          END,
+          error = ?,
+          last_batch_at = ?,
+          finished_at = CASE WHEN ? THEN ? ELSE finished_at END,
+          duration_ms = CASE WHEN ? THEN ? ELSE duration_ms END
       WHERE id = ?
     `,
     )
     .bind(
-      new Date().toISOString(),
-      fields.durationMs,
       fields.repos,
       fields.succeeded,
       fields.failed.length,
-      fields.failed.join(',') || null,
+      fields.failed.join(','),
+      fields.failed.join(','),
+      fields.failed.join(','),
       fields.error ?? null,
-      runId,
+      now,
+      fields.done ? 1 : 0,
+      now,
+      fields.done ? 1 : 0,
+      fields.now.getTime() - new Date(run.startedAt).getTime(),
+      run.id,
     )
     .run()
 }
 
 /**
- * Fetch traffic for every owned (non-fork) repository and upsert it into D1.
+ * Collect traffic for the repositories still pending today, up to `batchSize`.
  *
- * Shared by the CLI collector (`scripts/collect-traffic.ts`) and the Nitro
- * scheduled plugin (`src/nitro/scheduled.ts`) driven by Cloudflare cron.
+ * Shared by the CLI collector (`scripts/collect-traffic.ts`), which collects
+ * everything at once, and the Nitro scheduled plugin (`src/nitro/scheduled.ts`)
+ * driven by Cloudflare cron, which collects a batch per invocation so a run
+ * stays inside the platform's per-invocation subrequest and query limits.
  *
- * Each repository costs 4 GitHub GETs and one D1 batch of at most 4 statements,
- * and repos run concurrently, so a full pass fits inside a Worker's cron
- * invocation. D1 allows 1000 queries per invocation on Workers Paid; with the
- * schema and run bookkeeping on top, that caps a run at roughly 240 repos.
- * Every run is recorded in `collection_runs`; a run that dies mid-pass leaves
- * its `finished_at` NULL rather than failing silently.
+ * The day's first batch lists the account's repositories into `repositories`;
+ * later batches read that list back. Every repository is attempted once per
+ * collection date (`collection_attempts`), so a failure is not retried in the
+ * same day and cannot block the rest.
+ *
+ * All batches share one `collection_runs` row per collection date, which is
+ * marked finished by whichever batch collects the last pending repository.
  *
  * The GitHub token comes from `options`, falling back to `process.env` — the
  * Cloudflare hook passes it explicitly so no `process.env` is required there.
@@ -368,6 +499,7 @@ export async function collectTraffic(
 ): Promise<CollectResult> {
   const log = options.log ?? (() => {})
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY
+  const send = options.fetch ?? ((request: Request) => fetch(request))
 
   const token = options.githubToken ?? process.env.GITHUB_TOKEN
   if (!token) {
@@ -379,53 +511,98 @@ export async function collectTraffic(
   await migrateSchema(db)
 
   const startedAtMs = Date.now()
-  const collectedOn = new Date(startedAtMs).toISOString().split('T')[0]
-  const runId = await startRun(db, new Date(startedAtMs).toISOString())
+  const now = options.now ?? new Date(startedAtMs)
+  const collectedOn = now.toISOString().split('T')[0]
+  const run = await ensureRun(db, collectedOn, now)
 
+  const ownedSql = `SELECT COUNT(*) AS n FROM repositories WHERE last_seen = ?`
+  const attemptedSql = `SELECT COUNT(*) AS n FROM collection_attempts WHERE collected_on = ?`
+
+  let repos = await countRepos(db, ownedSql, collectedOn)
   const failed: string[] = []
-  let repos: Repository[] = []
   let succeeded = 0
 
   try {
-    repos = await getMyRepos(headers)
-    log(`Found ${repos.length} repositories`)
-
-    await runBatch(db, buildRepositoryStatements(repos, collectedOn))
-
-    await mapWithConcurrency(repos, concurrency, async (repo) => {
-      try {
-        const snapshot = await fetchRepoTraffic(repo.full_name, headers)
-        const statements = buildRepoStatements(
-          repo.full_name,
-          collectedOn,
-          snapshot,
-        )
-        await runBatch(db, statements)
-        succeeded++
-        log(`✓ ${repo.full_name} (${statements.length} rows)`)
-      } catch (error) {
-        failed.push(repo.full_name)
-        log(`✗ ${repo.full_name}: ${String(error)}`)
-      }
-    })
+    if (repos === 0) {
+      const owned = await getMyRepos(headers, send)
+      await runBatch(db, buildRepositoryStatements(owned, collectedOn))
+      repos = owned.length
+      log(`Found ${repos} repositories`)
+    }
   } catch (error) {
-    await finishRun(db, runId, {
-      durationMs: Date.now() - startedAtMs,
-      repos: repos.length,
+    await recordBatch(db, run, {
+      now: new Date(),
+      repos,
       succeeded,
       failed,
+      done: false,
       error: String(error),
     })
     throw error
   }
 
-  const durationMs = Date.now() - startedAtMs
-  await finishRun(db, runId, {
-    durationMs,
-    repos: repos.length,
-    succeeded,
-    failed,
+  const batch = await pendingRepos(
+    db,
+    collectedOn,
+    // SQLite reads a negative LIMIT as no limit.
+    options.batchSize ?? -1,
+    options.force ?? false,
+  )
+
+  const outcomes: { repo: string; succeeded: boolean }[] = []
+  await mapWithConcurrency(batch, concurrency, async (repo) => {
+    try {
+      const snapshot = await fetchRepoTraffic(repo, headers, send)
+      const statements = buildRepoStatements(repo, collectedOn, snapshot)
+      await runBatch(db, statements)
+      succeeded++
+      outcomes.push({ repo, succeeded: true })
+      log(`✓ ${repo} (${statements.length} rows)`)
+    } catch (error) {
+      failed.push(repo)
+      outcomes.push({ repo, succeeded: false })
+      log(`✗ ${repo}: ${String(error)}`)
+    }
   })
 
-  return { repos: repos.length, succeeded, failed, durationMs }
+  if (outcomes.length > 0) {
+    const attemptedAt = new Date().toISOString()
+    await runBatch(
+      db,
+      buildAttemptStatements(collectedOn, attemptedAt, outcomes),
+    )
+  }
+
+  const pending = repos - (await countRepos(db, attemptedSql, collectedOn))
+  const finishedNow = new Date()
+
+  // An invocation after the day is complete leaves the run row alone, so its
+  // finished_at keeps pointing at the batch that actually completed it.
+  if (outcomes.length === 0 && pending <= 0 && run.finishedAt !== null) {
+    log(`Nothing pending for ${collectedOn}`)
+    return {
+      repos,
+      succeeded,
+      failed,
+      pending: 0,
+      durationMs: finishedNow.getTime() - startedAtMs,
+    }
+  }
+
+  await recordBatch(db, run, {
+    now: finishedNow,
+    repos,
+    succeeded,
+    failed,
+    done: pending <= 0,
+    error: null,
+  })
+
+  return {
+    repos,
+    succeeded,
+    failed,
+    pending: Math.max(pending, 0),
+    durationMs: finishedNow.getTime() - startedAtMs,
+  }
 }

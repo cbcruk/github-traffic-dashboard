@@ -25,7 +25,7 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 
 - Node.js 20+
 - pnpm
-- Cloudflare 계정 (배포 시 Workers Paid 플랜 필요, [제한 사항](#cloudflare-제한-사항) 참고)
+- Cloudflare 계정 (무료 플랜으로도 동작합니다, [제한 사항](#cloudflare-제한-사항) 참고)
 
 ### Installation
 
@@ -82,17 +82,19 @@ http://localhost:3000 에서 확인
 
 ## Data Collection (Cloudflare Cron)
 
-대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 매일 UTC 00:00에 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 GitHub API에서 트래픽을 수집해 D1에 저장합니다.
+대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 10분마다 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 그날 아직 수집하지 않은 레포를 일부만 골라 GitHub API에서 트래픽을 가져와 D1에 저장합니다. 그날 치가 끝나면 이후 실행은 아무것도 하지 않습니다.
 
 > GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화됩니다. Cloudflare cron 트리거에는 이 제한이 없습니다.
 
 수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. 레포지토리는 기본 6개씩 병렬로 처리하고, 한 레포의 모든 행은 테이블별 multi-row upsert로 묶어 한 번의 D1 batch로 기록합니다.
 
+**나눠서 수집하는 이유:** 한 번의 cron 호출에서 쓸 수 있는 subrequest와 D1 쿼리에 한도가 있습니다([제한 사항](#cloudflare-제한-사항)). 그날 첫 호출이 레포 목록을 가져와 `repositories`에 기록하고, 이후 호출은 그 목록을 읽어 `CRON_BATCH_SIZE`개씩 처리합니다. 처리한 레포는 성공·실패 관계없이 `collection_attempts`에 하루 한 번만 기록되므로, 실패한 레포가 나머지를 막지 않습니다. CLI로 돌리는 `pnpm db:collect`는 Node에 이런 한도가 없어서 한 번에 전부 수집합니다.
+
 수집 대상은 GitHub Traffic API의 네 엔드포인트(views, clones, popular/referrers, popular/paths)입니다. views와 clones는 같은 14일 윈도우를 쓰므로 날짜 기준으로 병합해 `daily_traffic` 한 행에 저장하고, referrers와 paths는 14일 롤링 집계라 수집일 스냅샷으로 `referrers`, `popular_paths`에 남깁니다.
 
 `traffic_totals`에는 GitHub이 함께 내려주는 윈도우 단위 합계를 스냅샷으로 저장합니다. 유니크 방문자는 14일 전체에 걸쳐 중복 제거된 값이라 일별 수치를 더해서는 복원할 수 없기 때문입니다. `repositories`에는 매 실행 시점의 소유 레포 목록을 기록합니다. 트래픽 행은 레포보다 오래 남으므로, 이름이 바뀌거나 삭제된 레포를 걸러내는 기준이 됩니다.
 
-실행 이력은 `collection_runs` 테이블에 기록됩니다. 실행 시작 시 행이 만들어지고 완료 시 `finished_at`, `duration_ms`, 성공/실패 레포 수가 채워지므로, `finished_at`이 NULL인 행은 중간에 중단된 실행을 뜻합니다. GitHub은 트래픽이 없는 날도 0으로 돌려주기 때문에 이 테이블 없이는 "수집 실패"와 "트래픽 0"을 구분할 수 없습니다.
+실행 이력은 `collection_runs` 테이블에 수집일 하루당 한 행으로 기록됩니다. 그날 첫 호출이 행을 만들고, 이후 호출마다 성공·실패 레포 수와 `last_batch_at`이 누적되며, 마지막 레포를 처리한 호출이 `finished_at`과 `duration_ms`를 채웁니다. 그래서 `finished_at`이 NULL인 채로 `last_batch_at`이 한참 전인 행은 도중에 멈춘 수집을 뜻합니다. GitHub은 트래픽이 없는 날도 0으로 돌려주기 때문에 이 테이블 없이는 "수집 실패"와 "트래픽 0"을 구분할 수 없습니다.
 
 cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의됩니다. Nitro가 빌드 시 생성하는 Worker 설정(`.output/server/wrangler.json`)에 이 파일이 병합됩니다.
 
@@ -189,9 +191,11 @@ npx wrangler secret put GITHUB_TOKEN
 
 ### Cloudflare 제한 사항
 
-수집은 cron 호출 한 번 안에서 끝나야 하므로 **Workers Paid 플랜**이 필요합니다. 무료 플랜은 호출당 subrequest 50개, D1 쿼리 50개로 제한되어 레포 몇 개만 처리할 수 있습니다.
+무료 플랜은 cron 호출 한 번에 subrequest 50개, D1 쿼리 50개까지 허용합니다. 수집은 레포 하나에 GitHub 요청 4개와 D1 statement 최대 4개를 쓰고, 그날 첫 호출은 레포 목록 조회에 요청 2개를 더 씁니다. 그래서 한 호출에 `CRON_BATCH_SIZE`(기본 8)개씩만 처리하고, 10분마다 이어서 수집합니다.
 
-Paid 플랜에서도 D1은 호출당 쿼리 1000개로 제한됩니다. 레포 하나에 쿼리 최대 4개를 쓰므로, 한 번에 수집할 수 있는 레포는 약 240개입니다. 이를 넘으면 실행이 도중에 실패하고 `collection_runs.finished_at`이 NULL로 남습니다.
+10분 간격이면 하루에 144번 호출되므로 레포 약 1,100개까지 커버합니다. 그보다 많으면 cron 간격을 좁히거나(`wrangler.jsonc`), Workers Paid 플랜에서 `CRON_BATCH_SIZE`를 올리세요. Paid 플랜은 호출당 subrequest 1,000개, D1 쿼리 1,000개까지 허용합니다.
+
+수집 기록은 `collection_attempts`에 남으므로, 호출이 하나 실패해도 다음 호출이 남은 레포부터 이어서 처리합니다.
 
 ### Turso에서 옮기기
 

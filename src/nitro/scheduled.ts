@@ -1,5 +1,5 @@
 import type { NitroAppPlugin } from 'nitro/types'
-import { collectTraffic } from '../lib/collect-traffic'
+import { CRON_BATCH_SIZE, collectTraffic } from '../lib/collect-traffic'
 import {
   HEALTH_CHECK_CRON,
   checkCollectionHealth,
@@ -57,11 +57,12 @@ const plugin: NitroAppPlugin = (nitroApp) => {
         const result = await collectTraffic({
           githubToken: e.GITHUB_TOKEN,
           db: e.DB,
+          batchSize: CRON_BATCH_SIZE,
           log: (msg) => console.log(msg),
         })
         console.log(
-          `Scheduled collection completed in ${(result.durationMs / 1000).toFixed(1)}s: ` +
-            `${result.succeeded}/${result.repos} succeeded` +
+          `Collected ${result.succeeded}/${result.repos} repositories in ` +
+            `${(result.durationMs / 1000).toFixed(1)}s, ${result.pending} pending` +
             (result.failed.length
               ? `, failed: ${result.failed.join(', ')}`
               : ''),

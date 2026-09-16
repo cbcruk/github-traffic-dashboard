@@ -30,8 +30,12 @@ export const HEALTH_CHECK_CRON = '0 6 * * *'
  */
 const STALE_AFTER_HOURS = 26
 
-/** A run still unfinished after this long was killed mid-flight. */
-const INTERRUPTED_AFTER_MINUTES = 60
+/**
+ * A run whose last batch wrote this long ago has stopped. Collection is spread
+ * over cron invocations, so what matters is the gap since the last batch, not
+ * how long the whole run has taken.
+ */
+const INTERRUPTED_AFTER_MINUTES = 40
 
 /**
  * A finished run that succeeded for fewer than this share of the repositories
@@ -41,6 +45,8 @@ const SUCCESS_DROP_RATIO = 0.5
 
 export interface CollectionRun {
   startedAt: string
+  /** When the most recent batch of this run wrote; null before batching. */
+  lastBatchAt: string | null
   finishedAt: string | null
   repos: number
   succeeded: number
@@ -81,24 +87,25 @@ export function assessCollection(
   const failures: string[] = []
   const warnings: string[] = []
   const age = hoursBetween(lastRun.startedAt, now)
+  const sinceBatch = hoursBetween(lastRun.lastBatchAt ?? lastRun.startedAt, now)
 
   if (age > STALE_AFTER_HOURS) {
     failures.push(
       `No collection has started in ${Math.floor(age)} hours (last: ${lastRun.startedAt}).`,
     )
   }
+  if (lastRun.error !== null) {
+    failures.push(`The latest run stopped with an error: ${lastRun.error}`)
+  }
 
   if (lastRun.finishedAt === null) {
-    if (age * 60 < INTERRUPTED_AFTER_MINUTES) {
+    if (failures.length === 0 && sinceBatch * 60 < INTERRUPTED_AFTER_MINUTES) {
       return { status: 'running', lastRun, problems: [] }
     }
     failures.push(
-      `The run started at ${lastRun.startedAt} never finished; it was likely killed mid-flight.`,
+      `The run started at ${lastRun.startedAt} stopped partway; its last batch wrote at ${lastRun.lastBatchAt ?? 'no batch'}.`,
     )
   } else {
-    if (lastRun.error !== null) {
-      failures.push(`The latest run stopped with an error: ${lastRun.error}`)
-    }
     if (lastRun.failed > 0) {
       warnings.push(
         `${lastRun.failed} of ${lastRun.repos} repositories failed: ${lastRun.failedRepos ?? 'unknown'}`,
@@ -131,7 +138,8 @@ export async function loadRecentRuns(db: D1Database): Promise<CollectionRun[]> {
   const { results } = await db
     .prepare(
       `
-      SELECT started_at AS startedAt, finished_at AS finishedAt, repos,
+      SELECT started_at AS startedAt, last_batch_at AS lastBatchAt,
+             finished_at AS finishedAt, repos,
              succeeded, failed, failed_repos AS failedRepos, error
       FROM collection_runs
       ORDER BY started_at DESC
