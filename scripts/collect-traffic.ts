@@ -6,7 +6,9 @@ async function main(): Promise<void> {
   console.log('Starting traffic data collection into the local D1 database...')
 
   const result = await withLocalDb((db) =>
-    collectTraffic({ db, log: (msg) => console.log(msg) }),
+    // No batching locally: Node has no per-invocation subrequest budget, and
+    // `force` re-collects repositories the deployed cron already did today.
+    collectTraffic({ db, force: true, log: (msg) => console.log(msg) }),
   )
 
   console.log(

@@ -146,8 +146,10 @@ describe('checkCollectionHealth with a GitHub issue', () => {
       ),
       test.db.prepare(
         `INSERT INTO collection_runs
-           (started_at, finished_at, repos, succeeded, failed, failed_repos)
-         VALUES ('2026-09-16T00:00:00Z', '2026-09-16T00:01:00Z', 3, 0, 3,
+           (started_at, last_batch_at, finished_at, repos, succeeded, failed,
+            failed_repos)
+         VALUES ('2026-09-16T00:00:00Z', '2026-09-16T00:01:00Z',
+                 '2026-09-16T00:01:00Z', 3, 0, 3,
                  'me/public,me/secret,me/unknown')`,
       ),
     ])
