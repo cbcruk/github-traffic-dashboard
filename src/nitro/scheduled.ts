@@ -1,5 +1,6 @@
 import type { NitroAppPlugin } from 'nitro/types'
 import { CRON_BATCH_SIZE, collectTraffic } from '../lib/collect-traffic'
+import { parseRepoSelection } from '../lib/repo-selection'
 import {
   HEALTH_CHECK_CRON,
   checkCollectionHealth,
@@ -10,6 +11,10 @@ interface CloudflareEnv {
   ALERT_WEBHOOK_URL?: string
   ALERT_GITHUB_REPO?: string
   DB?: D1Database
+  GITHUB_ORGS?: string
+  EXCLUDE_REPOS?: string
+  INCLUDE_FORKS?: string
+  EXCLUDE_ARCHIVED?: string
 }
 
 /**
@@ -56,6 +61,7 @@ const plugin: NitroAppPlugin = (nitroApp) => {
         }
         const result = await collectTraffic({
           githubToken: e.GITHUB_TOKEN,
+          selection: parseRepoSelection(e),
           db: e.DB,
           batchSize: CRON_BATCH_SIZE,
           log: (msg) => console.log(msg),

@@ -49,7 +49,7 @@ GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 # SHOW_PRIVATE_REPOS=true
 ```
 
-> GitHub Token은 `repo` scope가 필요합니다. [GitHub Settings](https://github.com/settings/tokens)에서 생성
+> 토큰 종류와 필요한 권한은 [GitHub 토큰](#github-토큰)을 참고하세요.
 
 ### Database Setup
 
@@ -156,6 +156,30 @@ private 레포까지 보려면 먼저 [Cloudflare Access](https://developers.clo
 
 공개 여부는 `repositories.private`에 기록됩니다. 이 값이 없는 레포(이 컬럼이 추가되기 전에 수집된 레포)는 다음 수집이 끝날 때까지 private으로 취급되어 숨겨집니다.
 
+## 수집 대상
+
+기본값은 토큰 주인이 소유한 레포 중 fork를 뺀 전부입니다. 환경 변수로 바꿀 수 있습니다.
+
+| 변수               | 예시                       | 설명                                                                                  |
+| ------------------ | -------------------------- | ------------------------------------------------------------------------------------- |
+| `GITHUB_ORGS`      | `acme,tools`               | 이 조직들의 레포를 추가로 수집합니다                                                  |
+| `EXCLUDE_REPOS`    | `me/dotfiles,me/*-archive` | 전체 이름(`owner/name`)으로 제외합니다. `*`는 임의의 문자열이고 대소문자를 무시합니다 |
+| `INCLUDE_FORKS`    | `true`                     | fork도 수집합니다                                                                     |
+| `EXCLUDE_ARCHIVED` | `true`                     | archived 레포를 뺍니다(기본은 포함, GitHub이 계속 트래픽을 집계하므로)                |
+
+Traffic API는 레포에 push 권한이 있어야 읽을 수 있습니다. 조직 레포 중 토큰에 push 권한이 없는 레포는 실패로 기록하지 않고 목록에서 빼며, 그날 첫 수집 로그에 `Skipped N without push access`로 남깁니다.
+
+설정은 그날 첫 수집이 레포 목록을 만들 때 읽습니다. 바꾼 설정은 다음 날(UTC) 수집부터 반영됩니다.
+
+### GitHub 토큰
+
+| 용도                                | classic PAT | fine-grained PAT                              |
+| ----------------------------------- | ----------- | --------------------------------------------- |
+| 트래픽 수집                         | `repo`      | Repository permissions > Administration: Read |
+| 실패 알림 이슈(`ALERT_GITHUB_REPO`) | `repo`      | 해당 레포의 Issues: Read and write            |
+
+fine-grained PAT은 resource owner 하나(내 계정 또는 조직 하나)에만 쓸 수 있습니다. 내 레포와 조직 레포(`GITHUB_ORGS`)를 함께 수집하려면 classic PAT을 쓰세요.
+
 ## Deployment
 
 앱과 cron이 하나의 Cloudflare Worker로 함께 배포됩니다.
@@ -175,6 +199,9 @@ npx wrangler secret put GITHUB_TOKEN
 # npx wrangler secret put ALERT_WEBHOOK_URL
 # (선택) Cloudflare Access로 보호한 경우에만
 # npx wrangler secret put SHOW_PRIVATE_REPOS
+# (선택) 수집 대상 조정, [수집 대상](#수집-대상) 참고
+# npx wrangler secret put GITHUB_ORGS
+# npx wrangler secret put EXCLUDE_REPOS
 ```
 
 `wrangler.jsonc`에는 `database_id`가 없습니다. 첫 배포 때 wrangler가 `github-traffic-dashboard`라는 이름의 D1 데이터베이스를 찾아 연결하고, 없으면 새로 만듭니다. 로컬에서 배포하면 wrangler가 생성된 ID를 `wrangler.jsonc`에 적어줄 수 있는데, 커밋하지 않아도 이후 배포는 계속 동작합니다.
@@ -187,13 +214,15 @@ npx wrangler secret put GITHUB_TOKEN
 | `pnpm cf:preview` | 로컬에서 빌드된 Worker 미리보기       |
 | `pnpm cf:tail`    | 배포된 Worker 실시간 로그             |
 
-> 배포 후 Cloudflare 대시보드 > Workers > 해당 Worker > Settings > Triggers에서 cron 등록을 확인할 수 있습니다. `GITHUB_TOKEN`은 `repo` scope PAT여야 합니다.
+> 배포 후 Cloudflare 대시보드 > Workers > 해당 Worker > Settings > Triggers에서 cron 등록을 확인할 수 있습니다. `GITHUB_TOKEN` 권한은 [GitHub 토큰](#github-토큰)을 참고하세요.
 
 ### Cloudflare 제한 사항
 
-무료 플랜은 cron 호출 한 번에 subrequest 50개, D1 쿼리 50개까지 허용합니다. 수집은 레포 하나에 GitHub 요청 4개와 D1 statement 최대 4개를 쓰고, 그날 첫 호출은 레포 목록 조회에 요청 2개를 더 씁니다. 그래서 한 호출에 `CRON_BATCH_SIZE`(기본 8)개씩만 처리하고, 10분마다 이어서 수집합니다.
+무료 플랜은 cron 호출 한 번에 subrequest 50개, D1 쿼리 50개까지 허용합니다. 수집은 레포 하나에 GitHub 요청 4개와 D1 statement 최대 4개를 쓰고, 그날 첫 호출은 레포 목록 조회에 요청 2개를 더 씁니다. 그래서 한 호출에 `CRON_BATCH_SIZE`(기본 7)개씩만 처리하고, 10분마다 이어서 수집합니다.
 
-10분 간격이면 하루에 144번 호출되므로 레포 약 1,100개까지 커버합니다. 그보다 많으면 cron 간격을 좁히거나(`wrangler.jsonc`), Workers Paid 플랜에서 `CRON_BATCH_SIZE`를 올리세요. Paid 플랜은 호출당 subrequest 1,000개, D1 쿼리 1,000개까지 허용합니다.
+`GITHUB_ORGS`를 쓰거나 레포가 100개를 넘으면 목록 조회 요청이 늘어납니다(조직마다, 100개마다 1개씩). 늘어난 요청 4개마다 그날 첫 호출이 처리하는 레포를 하나씩 줄여 한도를 지킵니다. 그래서 목록 조회 자체가 50개에 가까워질 만큼 조직이 많다면 Workers Paid가 필요합니다.
+
+10분 간격이면 하루에 144번 호출되므로 레포 약 1,000개까지 커버합니다. 그보다 많으면 cron 간격을 좁히거나(`wrangler.jsonc`), Workers Paid 플랜에서 `CRON_BATCH_SIZE`를 올리세요. Paid 플랜은 호출당 subrequest 1,000개, D1 쿼리 1,000개까지 허용합니다.
 
 수집 기록은 `collection_attempts`에 남으므로, 호출이 하나 실패해도 다음 호출이 남은 레포부터 이어서 처리합니다.
 
