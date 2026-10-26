@@ -18,6 +18,7 @@ import {
   dateRangeOptions,
   validateHistorySearch,
 } from '../lib/history-search'
+import { HistorySkeleton } from '../components/page-skeleton'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
   ChartContainer,
@@ -43,6 +44,7 @@ export const Route = createFileRoute('/history')({
       return []
     }
   },
+  pendingComponent: HistorySkeleton,
   component: HistoryPage,
 })
 
