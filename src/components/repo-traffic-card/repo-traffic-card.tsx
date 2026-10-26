@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, History } from 'lucide-react'
 import { Area, AreaChart, XAxis } from 'recharts'
 import { Card } from '@astryxdesign/core/Card'
 import { Grid } from '@astryxdesign/core/Grid'
@@ -76,17 +76,30 @@ export function RepoTrafficCard({ traffic }: RepoTrafficCardProps) {
     <Card>
       <VStack gap={4}>
         <VStack gap={1}>
-          <Link
-            href={`https://github.com/${traffic.repo}`}
-            isExternalLink
-            isStandalone
-            weight="semibold"
-          >
-            <HStack gap={1.5} vAlign="center" as="span">
-              {repoName}
-              <Icon icon={ExternalLink} size="xsm" />
-            </HStack>
-          </Link>
+          <HStack hAlign="between" vAlign="center" gap={2}>
+            <Link
+              href={`https://github.com/${traffic.repo}`}
+              isExternalLink
+              isStandalone
+              weight="semibold"
+            >
+              <HStack gap={1.5} vAlign="center" as="span">
+                {repoName}
+                <Icon icon={ExternalLink} size="xsm" />
+              </HStack>
+            </Link>
+            <Link
+              href={`/history?${new URLSearchParams({ repo: traffic.repo })}`}
+              isStandalone
+              type="supporting"
+              aria-label={`${repoName} history`}
+            >
+              <HStack gap={1} vAlign="center" as="span">
+                <Icon icon={History} size="xsm" />
+                History
+              </HStack>
+            </Link>
+          </HStack>
           {topReferrer && (
             <Text type="supporting">
               Top referrer: {topReferrer.referrer} ({topReferrer.count})
