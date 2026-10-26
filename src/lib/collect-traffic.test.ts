@@ -370,3 +370,105 @@ describe('collecting in batches', () => {
     }
   })
 })
+
+describe('choosing repositories', () => {
+  /** GitHub where `/user/repos` and each org list the given repositories. */
+  function fakeListings(listings: Record<string, object[][]>) {
+    const requests: string[] = []
+    const fetch = async (request: Request): Promise<Response> => {
+      const { pathname, searchParams } = new URL(request.url)
+      requests.push(pathname)
+      const pages = listings[pathname]
+      if (pages) {
+        return Response.json(pages[Number(searchParams.get('page')) - 1] ?? [])
+      }
+      if (pathname.endsWith('/views')) {
+        return Response.json({ count: 0, uniques: 0, views: [] })
+      }
+      if (pathname.endsWith('/clones')) {
+        return Response.json({ count: 0, uniques: 0, clones: [] })
+      }
+      return Response.json([])
+    }
+    return { fetch, requests }
+  }
+
+  const repo = (full_name: string, push = true) => ({
+    full_name,
+    fork: false,
+    private: false,
+    permissions: { push, admin: false },
+  })
+
+  async function withDb(test: (db: D1Database) => Promise<void>) {
+    const { db, dispose } = await createTestDb()
+    try {
+      await migrateSchema(db)
+      await test(db)
+    } finally {
+      await dispose()
+    }
+  }
+
+  const listedRepos = async (db: D1Database) =>
+    (
+      await db
+        .prepare(`SELECT repo FROM repositories ORDER BY repo`)
+        .all<{ repo: string }>()
+    ).results.map((row) => row.repo)
+
+  it('adds organization repositories the token can push to', () =>
+    withDb(async (db) => {
+      const gh = fakeListings({
+        '/user/repos': [[repo('me/app')]],
+        '/orgs/acme/repos': [[repo('acme/lib'), repo('acme/docs', false)]],
+      })
+      const logs: string[] = []
+
+      const result = await collectTraffic({
+        db,
+        githubToken: 'test',
+        fetch: gh.fetch,
+        selection: {
+          orgs: ['acme'],
+          exclude: [],
+          includeForks: false,
+          excludeArchived: false,
+        },
+        log: (msg) => logs.push(msg),
+      })
+
+      expect(await listedRepos(db)).toEqual(['acme/lib', 'me/app'])
+      expect(result).toMatchObject({ repos: 2, succeeded: 2, failed: [] })
+      expect(logs).toContain('Skipped 1 without push access: acme/docs')
+      expect(gh.requests).not.toContain('/repos/acme/docs/traffic/views')
+    }))
+
+  it('gives up batch slots for listing requests beyond the budget', () =>
+    withDb(async (db) => {
+      const ownPage = Array.from({ length: 100 }, (_, i) =>
+        repo(`me/repo-${String(i).padStart(3, '0')}`),
+      )
+      // 2 own pages + 4 orgs = 6 listing GETs, 4 over the budget: one slot.
+      const orgs = ['a', 'b', 'c', 'd']
+      const gh = fakeListings({
+        '/user/repos': [ownPage, [repo('me/zz')]],
+        ...Object.fromEntries(orgs.map((org) => [`/orgs/${org}/repos`, [[]]])),
+      })
+
+      const result = await collectTraffic({
+        db,
+        githubToken: 'test',
+        fetch: gh.fetch,
+        batchSize: 3,
+        selection: {
+          orgs,
+          exclude: [],
+          includeForks: false,
+          excludeArchived: false,
+        },
+      })
+
+      expect(result).toMatchObject({ repos: 101, succeeded: 2, pending: 99 })
+    }))
+})

@@ -1,4 +1,11 @@
 import { buildUpsert, runBatch, type Statement } from './db'
+import {
+  parseRepoSelection,
+  selectRepos,
+  type ListedRepository,
+  type RepoSelection,
+  type RepoSelectionEnv,
+} from './repo-selection'
 import { migrateSchema } from './schema'
 
 const GITHUB_API_BASE = 'https://api.github.com'
@@ -12,11 +19,7 @@ const GITHUB_API_BASE = 'https://api.github.com'
  */
 const DEFAULT_CONCURRENCY = 6
 
-interface Repository {
-  full_name: string
-  fork: boolean
-  private: boolean
-}
+type Repository = ListedRepository
 
 interface TrafficPoint {
   timestamp: string
@@ -75,6 +78,8 @@ export interface CollectOptions {
   concurrency?: number
   /** GitHub token. Falls back to process.env.GITHUB_TOKEN. */
   githubToken?: string
+  /** Repositories to list. Falls back to process.env (see repo-selection.ts). */
+  selection?: RepoSelection
   /** The D1 database to write to. */
   db: D1Database
   /**
@@ -98,8 +103,17 @@ export interface CollectOptions {
  * repository, plus 2 GETs for the repository listing on the day's first batch,
  * which leaves room at 7. Collection therefore spreads over the day's
  * invocations instead of stopping partway, as it did on 2026-09-15 and 16.
+ *
+ * A listing that needs more GETs (organizations, more pages) takes repository
+ * slots from the first batch instead; see `LISTING_REQUESTS_IN_BUDGET`.
  */
 export const CRON_BATCH_SIZE = 7
+
+/** Listing GETs already counted in `CRON_BATCH_SIZE`'s budget. */
+const LISTING_REQUESTS_IN_BUDGET = 2
+
+/** GitHub GETs one repository's traffic costs. */
+const REQUESTS_PER_REPO = 4
 
 function buildHeaders(token: string): HeadersInit {
   return {
@@ -162,28 +176,57 @@ async function mapWithConcurrency<T>(
   )
 }
 
-async function getMyRepos(
+/** Every page of a repository listing, and how many GETs it took. */
+async function listAllPages(
+  url: string,
   headers: HeadersInit,
   send: Fetch,
-): Promise<Repository[]> {
+): Promise<{ repos: Repository[]; requests: number }> {
   const perPage = 100
-  const allRepos: Repository[] = []
+  const repos: Repository[] = []
 
   for (let page = 1; ; page++) {
-    // `full_name` is a stable sort key. `updated` reorders between page
-    // requests, which can duplicate or skip repos mid-pagination.
-    const repos = await githubJson<Repository[]>(
-      `${GITHUB_API_BASE}/user/repos?per_page=${perPage}&page=${page}&sort=full_name&direction=asc&affiliation=owner`,
+    const pageRepos = await githubJson<Repository[]>(
+      `${url}&per_page=${perPage}&page=${page}`,
       headers,
       send,
     )
-    allRepos.push(...repos)
+    repos.push(...pageRepos)
 
     // Last page reached when fewer than a full page is returned.
-    if (repos.length < perPage) break
+    if (pageRepos.length < perPage) return { repos, requests: page }
+  }
+}
+
+/**
+ * The token owner's repositories plus those of `selection.orgs`, filtered by
+ * `selection`.
+ *
+ * `full_name` is a stable sort key. `updated` reorders between page requests,
+ * which can duplicate or skip repos mid-pagination.
+ */
+async function listRepos(
+  headers: HeadersInit,
+  send: Fetch,
+  selection: RepoSelection,
+): Promise<{ repos: Repository[]; noAccess: string[]; requests: number }> {
+  const urls = [
+    `${GITHUB_API_BASE}/user/repos?sort=full_name&direction=asc&affiliation=owner`,
+    ...selection.orgs.map(
+      (org) =>
+        `${GITHUB_API_BASE}/orgs/${encodeURIComponent(org)}/repos?type=all&sort=full_name&direction=asc`,
+    ),
+  ]
+
+  const listed: Repository[] = []
+  let requests = 0
+  for (const url of urls) {
+    const result = await listAllPages(url, headers, send)
+    listed.push(...result.repos)
+    requests += result.requests
   }
 
-  return allRepos.filter((repo) => !repo.fork)
+  return { ...selectRepos(listed, selection), requests }
 }
 
 async function fetchRepoTraffic(
@@ -506,6 +549,8 @@ export async function collectTraffic(
     throw new Error('GITHUB_TOKEN is not set')
   }
   const headers = buildHeaders(token)
+  const selection =
+    options.selection ?? parseRepoSelection(process.env as RepoSelectionEnv)
 
   const { db } = options
   await migrateSchema(db)
@@ -521,13 +566,30 @@ export async function collectTraffic(
   let repos = await countRepos(db, ownedSql, collectedOn)
   const failed: string[] = []
   let succeeded = 0
+  let batchSize = options.batchSize
 
   try {
     if (repos === 0) {
-      const owned = await getMyRepos(headers, send)
-      await runBatch(db, buildRepositoryStatements(owned, collectedOn))
-      repos = owned.length
+      const listing = await listRepos(headers, send, selection)
+      await runBatch(db, buildRepositoryStatements(listing.repos, collectedOn))
+      repos = listing.repos.length
       log(`Found ${repos} repositories`)
+      if (listing.noAccess.length > 0) {
+        log(
+          `Skipped ${listing.noAccess.length} without push access: ` +
+            listing.noAccess.join(', '),
+        )
+      }
+
+      // Pay for a longer listing with this batch's repository slots, so the
+      // invocation stays inside the subrequest budget.
+      const extra = listing.requests - LISTING_REQUESTS_IN_BUDGET
+      if (batchSize !== undefined && extra > 0) {
+        batchSize = Math.max(
+          0,
+          batchSize - Math.ceil(extra / REQUESTS_PER_REPO),
+        )
+      }
     }
   } catch (error) {
     await recordBatch(db, run, {
@@ -545,7 +607,7 @@ export async function collectTraffic(
     db,
     collectedOn,
     // SQLite reads a negative LIMIT as no limit.
-    options.batchSize ?? -1,
+    batchSize ?? -1,
     options.force ?? false,
   )
 
