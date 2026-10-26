@@ -20,6 +20,7 @@ import {
   type PublicCollectionStatus,
 } from '../lib/github'
 import { CollectionStatus } from '../components/collection-status'
+import { DashboardSkeleton } from '../components/page-skeleton'
 import { RepoTrafficCard } from '../components/repo-traffic-card'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
@@ -63,6 +64,7 @@ export const Route = createFileRoute('/')({
     ])
     return { repos, collection }
   },
+  pendingComponent: DashboardSkeleton,
   component: Dashboard,
 })
 

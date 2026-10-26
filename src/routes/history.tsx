@@ -14,6 +14,7 @@ import { Selector } from '@astryxdesign/core/Selector'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { getHistoricalTraffic } from '../lib/github'
+import { HistorySkeleton } from '../components/page-skeleton'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
   ChartContainer,
@@ -46,6 +47,7 @@ export const Route = createFileRoute('/history')({
       return []
     }
   },
+  pendingComponent: HistorySkeleton,
   component: HistoryPage,
 })
 
