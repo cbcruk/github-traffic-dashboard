@@ -1,5 +1,6 @@
 import { collectTraffic } from '../src/lib/collect-traffic'
 import { DEMO_OWNER, createDemoGitHub } from '../src/lib/demo-github'
+import { parseRepoSelection } from '../src/lib/repo-selection'
 import { migrateSchema } from '../src/lib/schema'
 import { withLocalDb } from './local-db'
 
@@ -25,6 +26,8 @@ async function main(): Promise<void> {
       db,
       githubToken: 'demo',
       fetch: createDemoGitHub(),
+      // Ignore GITHUB_ORGS and the like in .env; the demo API knows none.
+      selection: parseRepoSelection({}),
       force: true,
       log: (msg) => console.log(msg),
     })

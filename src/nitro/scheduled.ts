@@ -1,6 +1,7 @@
 import type { NitroAppPlugin } from 'nitro/types'
 import { CRON_BATCH_SIZE, collectTraffic } from '../lib/collect-traffic'
 import { DEMO_BATCH_SIZE, createDemoGitHub } from '../lib/demo-github'
+import { parseRepoSelection } from '../lib/repo-selection'
 import {
   HEALTH_CHECK_CRON,
   checkCollectionHealth,
@@ -12,6 +13,10 @@ interface CloudflareEnv {
   ALERT_GITHUB_REPO?: string
   DB?: D1Database
   DEMO_MODE?: string
+  GITHUB_ORGS?: string
+  EXCLUDE_REPOS?: string
+  INCLUDE_FORKS?: string
+  EXCLUDE_ARCHIVED?: string
 }
 
 /**
@@ -62,8 +67,16 @@ const plugin: NitroAppPlugin = (nitroApp) => {
         const demo = e.DEMO_MODE === 'true'
         const result = await collectTraffic({
           ...(demo
-            ? { githubToken: 'demo', fetch: createDemoGitHub() }
-            : { githubToken: e.GITHUB_TOKEN }),
+            ? {
+                githubToken: 'demo',
+                fetch: createDemoGitHub(),
+                // The demo API knows no organizations.
+                selection: parseRepoSelection({}),
+              }
+            : {
+                githubToken: e.GITHUB_TOKEN,
+                selection: parseRepoSelection(e),
+              }),
           db: e.DB,
           batchSize: demo ? DEMO_BATCH_SIZE : CRON_BATCH_SIZE,
           log: (msg) => console.log(msg),
