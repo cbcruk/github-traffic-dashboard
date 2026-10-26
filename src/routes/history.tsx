@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { Card } from '@astryxdesign/core/Card'
@@ -14,6 +13,11 @@ import { Selector } from '@astryxdesign/core/Selector'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { getHistoricalTraffic } from '../lib/github'
+import {
+  DEFAULT_RANGE,
+  dateRangeOptions,
+  validateHistorySearch,
+} from '../lib/history-search'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
   ChartContainer,
@@ -29,15 +33,8 @@ const chartConfig = {
   clones: { label: 'Clones', color: 'var(--color-data-categorical-purple)' },
 } satisfies ChartConfig
 
-const dateRangeOptions = [
-  { value: '7', label: 'Last 7 days' },
-  { value: '14', label: 'Last 14 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '60', label: 'Last 60 days' },
-  { value: '90', label: 'Last 90 days' },
-]
-
 export const Route = createFileRoute('/history')({
+  validateSearch: validateHistorySearch,
   loader: async (): Promise<DailyTraffic[]> => {
     try {
       return await getHistoricalTraffic()
@@ -86,8 +83,22 @@ function StatCard({ label, value }: { label: string; value: number }) {
 
 function HistoryPage() {
   const historicalData = Route.useLoaderData()
-  const [selectedRepo, setSelectedRepo] = useState<string>('all')
-  const [dateRange, setDateRange] = useState<string>('30')
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: '/history' })
+
+  const selectedRepo = search.repo ?? 'all'
+  const dateRange = String(search.range ?? DEFAULT_RANGE)
+
+  function updateSearch(updates: { repo?: string; range?: string }) {
+    navigate({
+      search: (prev) =>
+        validateHistorySearch({
+          ...prev,
+          ...updates,
+        }),
+      replace: true,
+    })
+  }
 
   const repos = [...new Set(historicalData.map((d) => d.repo))].sort()
   const repoOptions = [
@@ -161,14 +172,14 @@ function HistoryPage() {
               label="Repository"
               placeholder="All repositories"
               value={selectedRepo}
-              onChange={setSelectedRepo}
+              onChange={(repo) => updateSearch({ repo })}
               options={repoOptions}
               width={220}
             />
             <Selector
               label="Period"
               value={dateRange}
-              onChange={setDateRange}
+              onChange={(range) => updateSearch({ range })}
               options={dateRangeOptions}
               width={160}
             />

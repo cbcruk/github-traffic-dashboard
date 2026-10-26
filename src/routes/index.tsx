@@ -48,7 +48,9 @@ export const Route = createFileRoute('/')({
     sort: sortOptions.includes(search.sort as SortOption)
       ? (search.sort as SortOption)
       : undefined,
-    showEmpty: search.showEmpty === true || search.showEmpty === 'true',
+    // Undefined rather than false, so the default stays out of the URL.
+    showEmpty:
+      search.showEmpty === true || search.showEmpty === 'true' || undefined,
   }),
   loader: async (): Promise<{
     repos: RepoTraffic[]

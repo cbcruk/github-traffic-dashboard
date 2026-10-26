@@ -43,6 +43,13 @@ describe('RepoTrafficCard', () => {
     )
   })
 
+  it("links to the repository's history", () => {
+    render(<RepoTrafficCard traffic={traffic} />)
+
+    const link = screen.getByRole('link', { name: 'repo history' })
+    expect(link.getAttribute('href')).toBe('/history?repo=me%2Frepo')
+  })
+
   it('shows the deduplicated visitor count, not a sum of daily uniques', () => {
     render(<RepoTrafficCard traffic={traffic} />)
 
