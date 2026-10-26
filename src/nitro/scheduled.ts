@@ -1,5 +1,6 @@
 import type { NitroAppPlugin } from 'nitro/types'
 import { CRON_BATCH_SIZE, collectTraffic } from '../lib/collect-traffic'
+import { DEMO_BATCH_SIZE, createDemoGitHub } from '../lib/demo-github'
 import {
   HEALTH_CHECK_CRON,
   checkCollectionHealth,
@@ -10,6 +11,7 @@ interface CloudflareEnv {
   ALERT_WEBHOOK_URL?: string
   ALERT_GITHUB_REPO?: string
   DB?: D1Database
+  DEMO_MODE?: string
 }
 
 /**
@@ -23,6 +25,9 @@ interface CloudflareEnv {
  * The cron schedules are defined in wrangler.jsonc (`triggers.crons`). The
  * `HEALTH_CHECK_CRON` trigger checks recent runs and alerts instead of
  * collecting; every other trigger collects.
+ *
+ * With `DEMO_MODE=true` the collector reads made-up traffic from
+ * `createDemoGitHub` instead of GitHub, so a demo deployment needs no token.
  *
  * `defineNitroPlugin` is just an identity helper, so a plain default-exported
  * function typed as NitroAppPlugin is equivalent and avoids an extra import.
@@ -54,10 +59,13 @@ const plugin: NitroAppPlugin = (nitroApp) => {
           })
           return
         }
+        const demo = e.DEMO_MODE === 'true'
         const result = await collectTraffic({
-          githubToken: e.GITHUB_TOKEN,
+          ...(demo
+            ? { githubToken: 'demo', fetch: createDemoGitHub() }
+            : { githubToken: e.GITHUB_TOKEN }),
           db: e.DB,
-          batchSize: CRON_BATCH_SIZE,
+          batchSize: demo ? DEMO_BATCH_SIZE : CRON_BATCH_SIZE,
           log: (msg) => console.log(msg),
         })
         console.log(

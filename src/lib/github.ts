@@ -225,6 +225,14 @@ export const getHistoricalTraffic = createServerFn().handler(
  * started, nothing more. Problem details can name private repositories and
  * run counts would reveal how many exist, so those only go to the webhook.
  */
+/**
+ * Whether this deployment serves demo data (`DEMO_MODE=true`), so the page can
+ * say so instead of passing made-up numbers off as real traffic.
+ */
+export const getDemoMode = createServerFn().handler(
+  async (): Promise<boolean> => process.env.DEMO_MODE === 'true',
+)
+
 export const getCollectionStatus = createServerFn().handler(
   async (): Promise<PublicCollectionStatus | null> => {
     try {

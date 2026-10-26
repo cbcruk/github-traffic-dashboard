@@ -68,6 +68,19 @@ pnpm dev
 
 http://localhost:3000 에서 확인
 
+### 데모 모드
+
+GitHub 토큰이나 수집한 데이터 없이 대시보드를 둘러볼 수 있습니다. 만들어 낸 레포 8개와 90일치 트래픽을 실제 수집과 같은 경로로 D1에 기록하므로, 모든 페이지가 그대로 동작합니다.
+
+```bash
+pnpm db:demo              # 로컬 D1에 데모 데이터 기록
+DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
+```
+
+실제 레포가 이미 수집된 로컬 DB에는 섞이지 않도록 기록을 거부합니다. `.wrangler/state`를 지우고 다시 실행하세요.
+
+배포한 Worker에 `DEMO_MODE=true`를 설정하면 cron이 GitHub 대신 데모 데이터를 수집하고(토큰 불필요) 배너를 표시합니다. 실제 데이터와 섞이지 않도록 데모는 별도 Worker와 D1로 배포하세요.
+
 ## Scripts
 
 | Script            | Description                  |
@@ -79,6 +92,7 @@ http://localhost:3000 에서 확인
 | `pnpm format`     | Prettier 포맷 적용           |
 | `pnpm db:init`    | 로컬 D1에 마이그레이션 적용  |
 | `pnpm db:collect` | 로컬 D1에 트래픽 데이터 수집 |
+| `pnpm db:demo`    | 로컬 D1에 데모 데이터 기록   |
 
 ## Data Collection (Cloudflare Cron)
 

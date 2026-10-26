@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "db:init": "tsx scripts/init-db.ts",
     "db:collect": "tsx scripts/collect-traffic.ts",
+    "db:demo": "tsx scripts/demo.ts",
     "deploy": "vite build && wrangler deploy",
     "cf:preview": "vite build && wrangler dev",
     "cf:tail": "wrangler tail",

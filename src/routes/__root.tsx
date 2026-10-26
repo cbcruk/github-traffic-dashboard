@@ -1,7 +1,14 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRoute,
+} from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import { Banner } from '@astryxdesign/core/Banner'
 import { LinkProvider } from '@astryxdesign/core/Link'
+import { getDemoMode } from '../lib/github'
 import { ThemeProvider } from '../components/theme-provider'
 import { RouterLink } from '../components/router-link'
 import appCss from '../styles.css?url'
@@ -33,8 +40,28 @@ export const Route = createRootRoute({
     ],
   }),
 
+  loader: () => getDemoMode().catch(() => false),
   shellComponent: RootDocument,
+  component: Root,
 })
+
+function Root() {
+  const demo = Route.useLoaderData()
+
+  return (
+    <>
+      {demo && (
+        <Banner
+          status="info"
+          container="section"
+          title="Demo data"
+          description="Repositories and traffic on this page are made up."
+        />
+      )}
+      <Outlet />
+    </>
+  )
+}
 
 /*
  * Applies the stored color mode before first paint. Astryx <Theme> takes over
