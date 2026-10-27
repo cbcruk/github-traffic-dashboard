@@ -6,10 +6,17 @@ import {
   type CollectionStatus,
 } from './collection-health'
 import { getDb } from './env'
-import type { RepoTraffic, DailyTraffic } from './github.types'
+import type {
+  DailyTraffic,
+  PopularPath,
+  Referrer,
+  RepoTraffic,
+} from './github.types'
+import { findUncovered, type RepoDetail } from './repo-detail'
 import { DEMO_HISTORY_DAYS } from './demo-github'
 import { dateRangeOptions } from './history-search'
 import {
+  GITHUB_WINDOW_DAYS,
   addDays,
   buildPreviousPeriods,
   type DailyRow,
@@ -233,6 +240,38 @@ export const getHistoricalTraffic = createServerFn().handler(
  * started, nothing more. Problem details can name private repositories and
  * run counts would reveal how many exist, so those only go to the webhook.
  */
+/**
+ * Dates collections ran on, from `from` onward, for telling collection gaps
+ * from quiet days (see `uncoveredDays`).
+ *
+ * Every collection stamps its snapshots with the collection date. Any of the
+ * three tables will do, and together they reach back past traffic_totals,
+ * which only exists since 2026-09-09.
+ */
+async function loadCollectionDates(
+  db: D1Database,
+  from: string,
+): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `
+      SELECT date FROM traffic_totals WHERE date >= ?1
+      UNION SELECT date FROM referrers WHERE date >= ?1
+      UNION SELECT date FROM popular_paths WHERE date >= ?1
+    `,
+    )
+    .bind(from)
+    .all<{ date: string }>()
+  return results.map((row) => row.date)
+}
+
+/** Days one collection reports: GitHub's 14, or 90 for demo collections. */
+function coverageWindowDays(): number {
+  return process.env.DEMO_MODE === 'true'
+    ? DEMO_HISTORY_DAYS
+    : GITHUB_WINDOW_DAYS
+}
+
 /** Period lengths in days that the pages compare: `/`'s 14 and each range. */
 const COMPARED_RANGES = dateRangeOptions.map((option) => Number(option.value))
 
@@ -264,27 +303,12 @@ export const getPreviousPeriods = createServerFn().handler(
         .bind(from, to)
         .all<DailyRow>()
 
-      // Every collection stamps its snapshots with the collection date. Any of
-      // the three tables will do, and together they reach back past
-      // traffic_totals, which only exists since 2026-09-09.
-      const { results: collections } = await db
-        .prepare(
-          `
-        SELECT date FROM traffic_totals WHERE date >= ?1
-        UNION SELECT date FROM referrers WHERE date >= ?1
-        UNION SELECT date FROM popular_paths WHERE date >= ?1
-      `,
-        )
-        .bind(from)
-        .all<{ date: string }>()
-
       return buildPreviousPeriods(
         rows,
-        collections.map((row) => row.date),
+        await loadCollectionDates(db, from),
         today,
         COMPARED_RANGES,
-        // Demo collections report 90 days at once rather than GitHub's 14.
-        process.env.DEMO_MODE === 'true' ? DEMO_HISTORY_DAYS : undefined,
+        coverageWindowDays(),
       )
     } catch (error) {
       console.error('Failed to fetch previous periods:', error)
@@ -292,6 +316,82 @@ export const getPreviousPeriods = createServerFn().handler(
     }
   },
 )
+
+/**
+ * One visible repository's full history, latest referrer and path snapshots,
+ * and the days collection missed, or null if the repository is unknown or
+ * hidden from this dashboard.
+ */
+export const getRepoDetail = createServerFn()
+  .inputValidator((data: { repo: string }) => ({ repo: String(data.repo) }))
+  .handler(async ({ data }): Promise<RepoDetail | null> => {
+    const db = await getDb()
+    const { repo } = data
+
+    const seen = await db
+      .prepare(
+        `
+        SELECT first_seen AS firstSeen, last_seen AS lastSeen
+        FROM repositories
+        WHERE repo = ?1 AND repo IN (${visibleReposQuery()})
+      `,
+      )
+      .bind(repo)
+      .first<{ firstSeen: string; lastSeen: string }>()
+    if (!seen) return null
+
+    const [{ results: daily }, referrers, paths] = await Promise.all([
+      db
+        .prepare(
+          `
+          SELECT repo, date, views, visitors, clones,
+                 clone_uniques AS cloneUniques
+          FROM daily_traffic WHERE repo = ?1 ORDER BY date
+        `,
+        )
+        .bind(repo)
+        .all<DailyTraffic>(),
+      // The newest snapshot only: each is already a 14-day aggregate.
+      db
+        .prepare(
+          `
+          SELECT referrer, count, uniques FROM referrers
+          WHERE repo = ?1
+            AND date = (SELECT MAX(date) FROM referrers WHERE repo = ?1)
+          ORDER BY count DESC
+        `,
+        )
+        .bind(repo)
+        .all<Referrer>()
+        .then((r) => r.results),
+      db
+        .prepare(
+          `
+          SELECT path, title, count, uniques FROM popular_paths
+          WHERE repo = ?1
+            AND date = (SELECT MAX(date) FROM popular_paths WHERE repo = ?1)
+          ORDER BY count DESC
+        `,
+        )
+        .bind(repo)
+        .all<PopularPath>()
+        .then((r) => r.results),
+    ])
+
+    const today = new Date().toISOString().slice(0, 10)
+    const collections = daily.length
+      ? await loadCollectionDates(db, daily[0].date)
+      : []
+
+    return {
+      repo,
+      ...seen,
+      daily,
+      uncovered: findUncovered(daily, collections, today, coverageWindowDays()),
+      referrers,
+      paths,
+    }
+  })
 
 /**
  * Whether this deployment serves demo data (`DEMO_MODE=true`), so the page can

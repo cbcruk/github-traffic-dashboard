@@ -33,6 +33,7 @@ import {
   type ChartConfig,
 } from '../components/chart'
 import type { DailyTraffic } from '../lib/github.types'
+import { repoPath } from '../lib/repo-detail'
 
 const chartConfig = {
   views: { label: 'Views', color: 'var(--color-data-categorical-blue)' },
@@ -195,6 +196,11 @@ function HistoryPage() {
               options={dateRangeOptions}
               width={160}
             />
+            {search.repo && (
+              <Link href={repoPath(search.repo)} isStandalone>
+                Repository details
+              </Link>
+            )}
           </HStack>
 
           <Grid columns={{ minWidth: 200, max: 3 }} gap={4}>

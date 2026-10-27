@@ -1,4 +1,4 @@
-import { ExternalLink, History } from 'lucide-react'
+import { ChartLine, ExternalLink } from 'lucide-react'
 import { Area, AreaChart, XAxis } from 'recharts'
 import { Card } from '@astryxdesign/core/Card'
 import { Grid } from '@astryxdesign/core/Grid'
@@ -14,6 +14,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '../chart'
+import { repoPath } from '../../lib/repo-detail'
 import type { RepoTrafficCardProps } from './repo-traffic-card.types'
 
 const chartConfig = {
@@ -89,14 +90,14 @@ export function RepoTrafficCard({ traffic }: RepoTrafficCardProps) {
               </HStack>
             </Link>
             <Link
-              href={`/history?${new URLSearchParams({ repo: traffic.repo })}`}
+              href={repoPath(traffic.repo)}
               isStandalone
               type="supporting"
-              aria-label={`${repoName} history`}
+              aria-label={`${repoName} details`}
             >
               <HStack gap={1} vAlign="center" as="span">
-                <Icon icon={History} size="xsm" />
-                History
+                <Icon icon={ChartLine} size="xsm" />
+                Details
               </HStack>
             </Link>
           </HStack>
