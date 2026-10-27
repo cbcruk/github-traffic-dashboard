@@ -17,6 +17,7 @@ GitHub은 레포지토리 트래픽(views, clones, referrers)을 14일만 보관
 - **Dark Mode** - 시스템 설정 연동 다크 모드
 - **Search & Filter** - 레포지토리 검색, 정렬, 필터링
 - **Auto Collection** - Cloudflare Workers cron으로 일일 데이터 자동 수집
+- **Export** - 대시보드와 히스토리를 화면의 필터 그대로 CSV/JSON으로 내려받기
 - **Demo Mode** - 토큰 없이 만들어 낸 데이터로 체험
 
 ## 직접 배포하기
