@@ -7,6 +7,14 @@ import {
 } from './collection-health'
 import { getDb } from './env'
 import type { RepoTraffic, DailyTraffic } from './github.types'
+import { DEMO_HISTORY_DAYS } from './demo-github'
+import { dateRangeOptions } from './history-search'
+import {
+  addDays,
+  buildPreviousPeriods,
+  type DailyRow,
+  type PreviousPeriods,
+} from './period-comparison'
 
 export interface PublicCollectionStatus {
   status: CollectionStatus
@@ -225,6 +233,66 @@ export const getHistoricalTraffic = createServerFn().handler(
  * started, nothing more. Problem details can name private repositories and
  * run counts would reveal how many exist, so those only go to the webhook.
  */
+/** Period lengths in days that the pages compare: `/`'s 14 and each range. */
+const COMPARED_RANGES = dateRangeOptions.map((option) => Number(option.value))
+
+/**
+ * Traffic of the period before each compared range, per visible repository,
+ * and whether collection gaps make the comparison unreliable.
+ *
+ * The pages already hold the current periods' figures, so only the previous
+ * ones are fetched, summed here rather than shipped as daily rows: the longest
+ * range reaches 180 days back.
+ */
+export const getPreviousPeriods = createServerFn().handler(
+  async (): Promise<PreviousPeriods> => {
+    try {
+      const db = await getDb()
+      const today = new Date().toISOString().slice(0, 10)
+      const from = addDays(today, 1 - 2 * Math.max(...COMPARED_RANGES))
+      const to = addDays(today, -Math.min(...COMPARED_RANGES))
+
+      const { results: rows } = await db
+        .prepare(
+          `
+        SELECT repo, date, views, visitors, clones
+        FROM daily_traffic
+        WHERE date BETWEEN ?1 AND ?2
+          AND repo IN (${visibleReposQuery()})
+      `,
+        )
+        .bind(from, to)
+        .all<DailyRow>()
+
+      // Every collection stamps its snapshots with the collection date. Any of
+      // the three tables will do, and together they reach back past
+      // traffic_totals, which only exists since 2026-09-09.
+      const { results: collections } = await db
+        .prepare(
+          `
+        SELECT date FROM traffic_totals WHERE date >= ?1
+        UNION SELECT date FROM referrers WHERE date >= ?1
+        UNION SELECT date FROM popular_paths WHERE date >= ?1
+      `,
+        )
+        .bind(from)
+        .all<{ date: string }>()
+
+      return buildPreviousPeriods(
+        rows,
+        collections.map((row) => row.date),
+        today,
+        COMPARED_RANGES,
+        // Demo collections report 90 days at once rather than GitHub's 14.
+        process.env.DEMO_MODE === 'true' ? DEMO_HISTORY_DAYS : undefined,
+      )
+    } catch (error) {
+      console.error('Failed to fetch previous periods:', error)
+      return {}
+    }
+  },
+)
+
 /**
  * Whether this deployment serves demo data (`DEMO_MODE=true`), so the page can
  * say so instead of passing made-up numbers off as real traffic.

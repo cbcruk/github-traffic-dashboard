@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { History, Search } from 'lucide-react'
-import { Card } from '@astryxdesign/core/Card'
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Grid } from '@astryxdesign/core/Grid'
@@ -17,8 +16,15 @@ import { VStack } from '@astryxdesign/core/VStack'
 import {
   getAllReposTraffic,
   getCollectionStatus,
+  getPreviousPeriods,
   type PublicCollectionStatus,
 } from '../lib/github'
+import {
+  previousSums,
+  type PreviousPeriods,
+  type TrafficSums,
+} from '../lib/period-comparison'
+import { StatCard, type StatChange } from '../components/stat-card'
 import { CollectionStatus } from '../components/collection-status'
 import { DashboardSkeleton } from '../components/page-skeleton'
 import { RepoTrafficCard } from '../components/repo-traffic-card'
@@ -36,6 +42,9 @@ const sortSelectorOptions = [
   { value: 'clones', label: 'Clones' },
   { value: 'name', label: 'Name' },
 ]
+
+/** Days the dashboard covers: GitHub's window, today included. */
+const DASHBOARD_DAYS = 14
 
 interface SearchParams {
   q?: string
@@ -56,35 +65,28 @@ export const Route = createFileRoute('/')({
   loader: async (): Promise<{
     repos: RepoTraffic[]
     collection: PublicCollectionStatus | null
+    previousPeriods: PreviousPeriods
   }> => {
-    const [repos, collection] = await Promise.all([
+    const [repos, collection, previousPeriods] = await Promise.all([
       getAllReposTraffic().catch((error) => {
         console.error('Failed to fetch traffic data:', error)
         return []
       }),
       getCollectionStatus().catch(() => null),
+      getPreviousPeriods().catch(() => ({})),
     ])
-    return { repos, collection }
+    return { repos, collection, previousPeriods }
   },
   pendingComponent: DashboardSkeleton,
   component: Dashboard,
 })
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <VStack gap={2}>
-        <Text type="supporting">{label}</Text>
-        <Text size="3xl" weight="bold" hasTabularNumbers>
-          {value.toLocaleString()}
-        </Text>
-      </VStack>
-    </Card>
-  )
-}
-
 function Dashboard() {
-  const { repos: trafficData, collection } = Route.useLoaderData()
+  const {
+    repos: trafficData,
+    collection,
+    previousPeriods,
+  } = Route.useLoaderData()
   const { q, sort, showEmpty } = Route.useSearch()
   const navigate = useNavigate({ from: '/' })
 
@@ -117,6 +119,24 @@ function Dashboard() {
   const totalUniques = trafficData.reduce((sum, t) => sum + t.views.uniques, 0)
   const totalClones = trafficData.reduce((sum, t) => sum + t.clones.count, 0)
 
+  // The visitors card shows GitHub's deduplicated window figure, which has no
+  // counterpart for the previous period, so its change compares daily-visitor
+  // sums of both periods instead.
+  const dailyVisitors = trafficData.reduce(
+    (sum, t) => sum + t.views.views.reduce((s, v) => s + v.uniques, 0),
+    0,
+  )
+  const previousPeriod = previousPeriods[DASHBOARD_DAYS]
+  const previous = previousSums(previousPeriod)
+  function changeOf(metric: keyof TrafficSums, current: number): StatChange {
+    return {
+      current,
+      previous: previous?.[metric] ?? null,
+      isIncomplete: previousPeriod?.incomplete ?? false,
+      days: DASHBOARD_DAYS,
+    }
+  }
+
   return (
     <Layout height="auto" contentWidth={1280} padding={6}>
       <LayoutContent>
@@ -141,9 +161,21 @@ function Dashboard() {
           </HStack>
 
           <Grid columns={{ minWidth: 200, max: 4 }} gap={4}>
-            <StatCard label="Total Views" value={totalViews} />
-            <StatCard label="Unique Visitors" value={totalUniques} />
-            <StatCard label="Total Clones" value={totalClones} />
+            <StatCard
+              label="Total Views"
+              value={totalViews}
+              change={changeOf('views', totalViews)}
+            />
+            <StatCard
+              label="Unique Visitors"
+              value={totalUniques}
+              change={changeOf('visitors', dailyVisitors)}
+            />
+            <StatCard
+              label="Total Clones"
+              value={totalClones}
+              change={changeOf('clones', totalClones)}
+            />
             <StatCard label="Repositories" value={trafficData.length} />
           </Grid>
 

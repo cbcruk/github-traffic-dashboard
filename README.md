@@ -6,6 +6,7 @@ GitHub 레포지토리의 트래픽 통계(views, clones, referrers)를 시각�
 
 - **Dashboard** - 최근 14일 트래픽 데이터 (views, visitors, clones)
 - **History** - 90일+ 히스토리 데이터 및 차트
+- **Period Comparison** - 합계 카드에 직전 같은 길이 기간 대비 증감률 표시. 수집이 빠진 날이 걸리면 "Incomplete data"로 표시
 - **Dark Mode** - 시스템 설정 연동 다크 모드
 - **Search & Filter** - 레포지토리 검색, 정렬, 필터링
 - **Auto Collection** - Cloudflare Workers cron으로 일일 데이터 자동 수집

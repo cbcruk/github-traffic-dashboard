@@ -12,13 +12,19 @@ import { Link } from '@astryxdesign/core/Link'
 import { Selector } from '@astryxdesign/core/Selector'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
-import { getHistoricalTraffic } from '../lib/github'
+import { getHistoricalTraffic, getPreviousPeriods } from '../lib/github'
 import {
   DEFAULT_RANGE,
   dateRangeOptions,
   validateHistorySearch,
 } from '../lib/history-search'
 import { HistorySkeleton } from '../components/page-skeleton'
+import { StatCard, type StatChange } from '../components/stat-card'
+import {
+  previousSums,
+  type PreviousPeriods,
+  type TrafficSums,
+} from '../lib/period-comparison'
 import { ThemeToggle } from '../components/theme-toggle'
 import {
   ChartContainer,
@@ -36,13 +42,18 @@ const chartConfig = {
 
 export const Route = createFileRoute('/history')({
   validateSearch: validateHistorySearch,
-  loader: async (): Promise<DailyTraffic[]> => {
-    try {
-      return await getHistoricalTraffic()
-    } catch (error) {
-      console.error('Failed to fetch historical data:', error)
-      return []
-    }
+  loader: async (): Promise<{
+    daily: DailyTraffic[]
+    previousPeriods: PreviousPeriods
+  }> => {
+    const [daily, previousPeriods] = await Promise.all([
+      getHistoricalTraffic().catch((error) => {
+        console.error('Failed to fetch historical data:', error)
+        return []
+      }),
+      getPreviousPeriods().catch(() => ({})),
+    ])
+    return { daily, previousPeriods }
   },
   pendingComponent: HistorySkeleton,
   component: HistoryPage,
@@ -70,21 +81,8 @@ function PageHeader({ hasSubtitle }: { hasSubtitle: boolean }) {
   )
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <VStack gap={2}>
-        <Text type="supporting">{label}</Text>
-        <Text size="3xl" weight="bold" hasTabularNumbers>
-          {value.toLocaleString()}
-        </Text>
-      </VStack>
-    </Card>
-  )
-}
-
 function HistoryPage() {
-  const historicalData = Route.useLoaderData()
+  const { daily: historicalData, previousPeriods } = Route.useLoaderData()
   const search = Route.useSearch()
   const navigate = useNavigate({ from: '/history' })
 
@@ -147,6 +145,18 @@ function HistoryPage() {
   const totalVisitors = chartData.reduce((sum, d) => sum + d.visitors, 0)
   const totalClones = chartData.reduce((sum, d) => sum + d.clones, 0)
 
+  const days = Number(dateRange)
+  const previousPeriod = previousPeriods[days]
+  const previous = previousSums(previousPeriod, search.repo)
+  function changeOf(metric: keyof TrafficSums, current: number): StatChange {
+    return {
+      current,
+      previous: previous?.[metric] ?? null,
+      isIncomplete: previousPeriod?.incomplete ?? false,
+      days,
+    }
+  }
+
   if (historicalData.length === 0) {
     return (
       <Layout height="auto" contentWidth={1280} padding={6}>
@@ -188,9 +198,21 @@ function HistoryPage() {
           </HStack>
 
           <Grid columns={{ minWidth: 200, max: 3 }} gap={4}>
-            <StatCard label="Total Views" value={totalViews} />
-            <StatCard label="Total Visitors" value={totalVisitors} />
-            <StatCard label="Total Clones" value={totalClones} />
+            <StatCard
+              label="Total Views"
+              value={totalViews}
+              change={changeOf('views', totalViews)}
+            />
+            <StatCard
+              label="Total Visitors"
+              value={totalVisitors}
+              change={changeOf('visitors', totalVisitors)}
+            />
+            <StatCard
+              label="Total Clones"
+              value={totalClones}
+              change={changeOf('clones', totalClones)}
+            />
           </Grid>
 
           <Card>
