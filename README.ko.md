@@ -6,6 +6,8 @@
 
 GitHub은 레포지토리 트래픽(views, clones, referrers)을 14일만 보관합니다. 이 대시보드는 그 데이터를 매일 내 데이터베이스에 모아 계속 보여줍니다. 앱과 수집기가 하나의 Cloudflare Worker로 동작하고 무료 플랜으로 충분합니다.
 
+**[라이브 데모](https://github-traffic-dashboard-demo.cbcruk.workers.dev)**: 가상의 데이터로 동작합니다([데모 모드](#데모-모드)).
+
 ## Features
 
 - **Dashboard** - 최근 14일 트래픽 데이터 (views, visitors, clones)
