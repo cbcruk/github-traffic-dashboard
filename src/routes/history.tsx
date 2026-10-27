@@ -34,6 +34,8 @@ import {
 } from '../components/chart'
 import type { DailyTraffic } from '../lib/github.types'
 import { repoPath } from '../lib/repo-detail'
+import { ExportMenu } from '../components/export-menu'
+import { fileSlug, historyExport } from '../lib/export'
 
 const chartConfig = {
   views: { label: 'Views', color: 'var(--color-data-categorical-blue)' },
@@ -201,6 +203,19 @@ function HistoryPage() {
                 Repository details
               </Link>
             )}
+            <ExportMenu
+              filename={`github-traffic-history-${fileSlug(
+                search.repo ?? 'all',
+              )}-${dateRange}d-${new Date().toISOString().slice(0, 10)}`}
+              isDisabled={filteredData.length === 0}
+              build={() =>
+                historyExport(
+                  filteredData,
+                  { repo: search.repo ?? null, days: Number(dateRange) },
+                  new Date().toISOString().slice(0, 10),
+                )
+              }
+            />
           </HStack>
 
           <Grid columns={{ minWidth: 200, max: 3 }} gap={4}>

@@ -25,6 +25,8 @@ import {
   type TrafficSums,
 } from '../lib/period-comparison'
 import { StatCard, type StatChange } from '../components/stat-card'
+import { ExportMenu } from '../components/export-menu'
+import { dashboardExport } from '../lib/export'
 import { CollectionStatus } from '../components/collection-status'
 import { DashboardSkeleton } from '../components/page-skeleton'
 import { RepoTrafficCard } from '../components/repo-traffic-card'
@@ -109,6 +111,8 @@ function Dashboard() {
       replace: true,
     })
   }
+
+  const today = new Date().toISOString().slice(0, 10)
 
   const filteredAndSortedData = useMemo(
     () => filterAndSortRepos(trafficData, { search, sortBy, showEmpty }),
@@ -218,6 +222,17 @@ function Dashboard() {
                 }
                 options={sortSelectorOptions}
                 width={140}
+              />
+              <ExportMenu
+                filename={`github-traffic-14d-${today}`}
+                isDisabled={filteredAndSortedData.length === 0}
+                build={() =>
+                  dashboardExport(
+                    filteredAndSortedData,
+                    { search: q, sort: sortBy, showEmpty: showEmpty ?? false },
+                    today,
+                  )
+                }
               />
             </HStack>
           </HStack>

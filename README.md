@@ -16,6 +16,7 @@ It runs as a single Cloudflare Worker, app and collector together, and fits the 
 - **Period comparison**: each total shows its change against the previous period of the same length
 - **Collection health**: the header shows whether collection is working, and failures can open a GitHub issue or post to a webhook
 - **Honest gaps**: days the collector missed are shown as missing, never as zero traffic
+- **Export**: download the dashboard or history as CSV or JSON, with the filters on screen
 - **Demo mode**: try it with made-up data, no token needed
 
 ## Deploy your own
