@@ -6,6 +6,8 @@ GitHub keeps repository traffic (views, clones, referrers) for 14 days only. Thi
 
 It runs as a single Cloudflare Worker, app and collector together, and fits the free plan.
 
+**[Live demo](https://github-traffic-dashboard-demo.cbcruk.workers.dev)**, with made-up data ([demo mode](#demo-mode)).
+
 ## Features
 
 - **Dashboard**: the last 14 days per repository, with views, unique visitors, clones and the top referrer and paths
