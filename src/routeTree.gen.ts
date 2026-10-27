@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TopRouteImport } from './routes/top'
+import { Route as ReferrersRouteImport } from './routes/referrers'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReposOwnerNameRouteImport } from './routes/repos.$owner.$name'
@@ -17,6 +18,11 @@ import { Route as ReposOwnerNameRouteImport } from './routes/repos.$owner.$name'
 const TopRoute = TopRouteImport.update({
   id: '/top',
   path: '/top',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReferrersRoute = ReferrersRouteImport.update({
+  id: '/referrers',
+  path: '/referrers',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HistoryRoute = HistoryRouteImport.update({
@@ -38,12 +44,14 @@ const ReposOwnerNameRoute = ReposOwnerNameRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/referrers': typeof ReferrersRoute
   '/top': typeof TopRoute
   '/repos/$owner/$name': typeof ReposOwnerNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/referrers': typeof ReferrersRoute
   '/top': typeof TopRoute
   '/repos/$owner/$name': typeof ReposOwnerNameRoute
 }
@@ -51,20 +59,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/referrers': typeof ReferrersRoute
   '/top': typeof TopRoute
   '/repos/$owner/$name': typeof ReposOwnerNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/history' | '/top' | '/repos/$owner/$name'
+  fullPaths: '/' | '/history' | '/referrers' | '/top' | '/repos/$owner/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/top' | '/repos/$owner/$name'
-  id: '__root__' | '/' | '/history' | '/top' | '/repos/$owner/$name'
+  to: '/' | '/history' | '/referrers' | '/top' | '/repos/$owner/$name'
+  id:
+    | '__root__'
+    | '/'
+    | '/history'
+    | '/referrers'
+    | '/top'
+    | '/repos/$owner/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
+  ReferrersRoute: typeof ReferrersRoute
   TopRoute: typeof TopRoute
   ReposOwnerNameRoute: typeof ReposOwnerNameRoute
 }
@@ -76,6 +92,13 @@ declare module '@tanstack/react-router' {
       path: '/top'
       fullPath: '/top'
       preLoaderRoute: typeof TopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/referrers': {
+      id: '/referrers'
+      path: '/referrers'
+      fullPath: '/referrers'
+      preLoaderRoute: typeof ReferrersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/history': {
@@ -105,6 +128,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
+  ReferrersRoute: ReferrersRoute,
   TopRoute: TopRoute,
   ReposOwnerNameRoute: ReposOwnerNameRoute,
 }

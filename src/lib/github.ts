@@ -13,6 +13,13 @@ import type {
   RepoTraffic,
 } from './github.types'
 import { findUncovered, type RepoDetail } from './repo-detail'
+import {
+  buildReferrerAnalysis,
+  windowEnds,
+  type ReferrerAnalysis,
+  type SnapshotRow,
+  type TrendRow,
+} from './referrers'
 import { DEMO_HISTORY_DAYS } from './demo-github'
 import { dateRangeOptions } from './history-search'
 import {
@@ -391,6 +398,73 @@ export const getRepoDetail = createServerFn()
       referrers,
       paths,
     }
+  })
+
+/**
+ * Referrer totals, per-repository breakdown and 14-day trend over the `days`
+ * days ending at the newest finished collection (see referrers.ts).
+ *
+ * Periods end there rather than today because a day's collection runs in
+ * batches: until it finishes, today's snapshots cover only some repositories.
+ */
+export const getReferrerAnalysis = createServerFn()
+  .inputValidator((data: { days: number }) => ({ days: Number(data.days) }))
+  .handler(async ({ data }): Promise<ReferrerAnalysis> => {
+    const db = await getDb()
+    const { days } = data
+
+    const finished = await db
+      .prepare(
+        `SELECT MAX(collected_on) AS date FROM collection_runs
+         WHERE finished_at IS NOT NULL`,
+      )
+      .first<string | null>('date')
+    const lookback = addDays(new Date().toISOString().slice(0, 10), -2 * days)
+    const collectionDates = await loadCollectionDates(db, lookback)
+    const anchor = finished ?? collectionDates.sort().at(-1) ?? null
+
+    if (!anchor) {
+      return buildReferrerAnalysis({
+        anchor,
+        days,
+        snapshots: [],
+        trendRows: [],
+        collectionDates,
+      })
+    }
+
+    const ends = windowEnds(anchor, days)
+    const [{ results: snapshots }, { results: trendRows }] = await Promise.all([
+      db
+        .prepare(
+          `
+          SELECT repo, date, referrer, count, uniques FROM referrers
+          WHERE date IN (${ends.map(() => '?').join(', ')})
+            AND repo IN (${visibleReposQuery()})
+        `,
+        )
+        .bind(...ends)
+        .all<SnapshotRow>(),
+      db
+        .prepare(
+          `
+          SELECT date, referrer, SUM(count) AS count FROM referrers
+          WHERE date BETWEEN ?1 AND ?2
+            AND repo IN (${visibleReposQuery()})
+          GROUP BY date, referrer
+        `,
+        )
+        .bind(addDays(anchor, 1 - days), anchor)
+        .all<TrendRow>(),
+    ])
+
+    return buildReferrerAnalysis({
+      anchor,
+      days,
+      snapshots,
+      trendRows,
+      collectionDates,
+    })
   })
 
 /**
