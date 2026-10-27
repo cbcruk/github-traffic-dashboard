@@ -28,6 +28,7 @@ import {
   type RankedRepo,
 } from '../lib/ranking'
 import type { DailyTraffic } from '../lib/github.types'
+import { repoPath } from '../lib/repo-detail'
 
 export const Route = createFileRoute('/top')({
   validateSearch: validateRankingSearch,
@@ -120,9 +121,7 @@ function RankingPage() {
       header: 'Repository',
       width: proportional(1),
       renderCell: (row: RankingRow) => (
-        <Link href={`/history?${new URLSearchParams({ repo: row.repo })}`}>
-          {row.repo.split('/')[1]}
-        </Link>
+        <Link href={repoPath(row.repo)}>{row.repo.split('/')[1]}</Link>
       ),
     },
     {
