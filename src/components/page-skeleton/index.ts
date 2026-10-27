@@ -1,1 +1,5 @@
-export { DashboardSkeleton, HistorySkeleton } from './page-skeleton'
+export {
+  DashboardSkeleton,
+  HistorySkeleton,
+  RankingSkeleton,
+} from './page-skeleton'

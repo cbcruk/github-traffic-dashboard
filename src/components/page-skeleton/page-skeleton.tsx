@@ -89,6 +89,26 @@ export function DashboardSkeleton() {
   )
 }
 
+/** Stands in for `/top`: header, filters, the ranking table. */
+export function RankingSkeleton() {
+  return (
+    <PageFrame>
+      <HeaderSkeleton />
+      <HStack gap={4} wrap="wrap" vAlign="end">
+        <Skeleton width={160} height={64} />
+        <Skeleton width={180} height={64} index={1} />
+      </HStack>
+      <Card>
+        <VStack gap={3}>
+          {Array.from({ length: 10 }, (_, i) => (
+            <Skeleton key={i} height={32} index={i} />
+          ))}
+        </VStack>
+      </Card>
+    </PageFrame>
+  )
+}
+
 /** Stands in for `/history`: header, filters, three totals, the chart. */
 export function HistorySkeleton() {
   return (
