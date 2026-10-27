@@ -1,0 +1,272 @@
+# GitHub Traffic Dashboard
+
+[English](./README.md)
+
+> 기준 문서는 [영어 README](./README.md)입니다. 이 문서는 갱신이 늦을 수 있습니다.
+
+GitHub은 레포지토리 트래픽(views, clones, referrers)을 14일만 보관합니다. 이 대시보드는 그 데이터를 매일 내 데이터베이스에 모아 계속 보여줍니다. 앱과 수집기가 하나의 Cloudflare Worker로 동작하고 무료 플랜으로 충분합니다.
+
+## Features
+
+- **Dashboard** - 최근 14일 트래픽 데이터 (views, visitors, clones)
+- **History** - 최대 90일 일별 데이터와 차트(레포·기간 필터)
+- **Top 10** - views, visitors, clones 기준 레포 순위와 순위 변동
+- **Referrers** - 전체 레포 합산 referrer 순위, 레포별 분해, 14일 추이
+- **레포 상세** - 레포 하나의 전체 히스토리, referrer, popular paths
+- **Period Comparison** - 합계 카드에 직전 같은 길이 기간 대비 증감률 표시. 수집이 빠진 날이 걸리면 "Incomplete data"로 표시
+- **Dark Mode** - 시스템 설정 연동 다크 모드
+- **Search & Filter** - 레포지토리 검색, 정렬, 필터링
+- **Auto Collection** - Cloudflare Workers cron으로 일일 데이터 자동 수집
+- **Demo Mode** - 토큰 없이 만들어 낸 데이터로 체험
+
+## 직접 배포하기
+
+1. **이 레포를 fork합니다.** "Use this template"로 복사하지 말고 fork해야 나중에 **Sync fork** 한 번으로 수정 사항을 받을 수 있습니다. fork한 레포의 추적 파일은 고치지 말고, 설정은 모두 Cloudflare 시크릿에 둡니다.
+2. **GitHub 토큰을 만듭니다.** 권한은 [GitHub 토큰](#github-토큰)을 참고하세요.
+3. **Cloudflare에 배포합니다.**
+   - **Workers Builds(추천):** Cloudflare 대시보드 > Workers & Pages > Create > Import a repository에서 fork를 고릅니다. Worker 이름은 `<GitHub 사용자명>-github-traffic-dashboard`(소문자)로 합니다. 빌드가 fork의 `owner/repo`로 Worker 이름을 만들고, Workers Builds는 두 이름이 같아야 합니다. Build command는 `pnpm run build`, deploy command는 `npx wrangler deploy` 그대로 둡니다.
+   - **로컬에서:** 아래 [Deployment](#deployment) 참고
+4. **토큰을 시크릿으로 등록합니다.** Worker > Settings > Variables and Secrets에서 `GITHUB_TOKEN`을 Secret으로 추가하거나 `npx wrangler secret put GITHUB_TOKEN`
+5. **첫 수집을 확인합니다.** 몇 분 안에 대시보드 헤더가 **Collecting now**가 되고, 그날 수집이 끝나면 **Collected**가 됩니다. `pnpm cf:tail`로 로그를 볼 수 있습니다.
+
+**업데이트:** fork 페이지에서 **Sync fork**를 누르면 Workers Builds가 배포하고, 밀린 마이그레이션은 다음 요청이나 cron에서 자동 적용됩니다.
+
+> "Deploy to Cloudflare" 버튼을 쓰지 않는 이유: 버튼은 fork가 아니라 새 레포로 복제하므로 **Sync fork**를 쓸 수 없습니다.
+
+## Tech Stack
+
+- [TanStack Start](https://tanstack.com/start) - Full-stack React framework
+- [TanStack Router](https://tanstack.com/router) - Type-safe routing
+- [Astryx](https://astryx.atmeta.com) - UI components, layout, and theming
+- [Recharts](https://recharts.org) - Charts
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) - 앱 호스팅과 cron 수집
+- [Cloudflare D1](https://developers.cloudflare.com/d1/) - SQLite 데이터베이스
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+
+- pnpm
+- Cloudflare 계정 (무료 플랜으로도 동작합니다, [제한 사항](#cloudflare-제한-사항) 참고)
+
+### Installation
+
+```bash
+pnpm install
+```
+
+### Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+`.env` 파일에 환경 변수 설정:
+
+```
+# GitHub Token
+GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+# (선택) private 레포를 대시보드에 표시
+# SHOW_PRIVATE_REPOS=true
+```
+
+> 토큰 종류와 필요한 권한은 [GitHub 토큰](#github-토큰)을 참고하세요.
+
+### Database Setup
+
+로컬 개발에는 별도 데이터베이스가 필요 없습니다. `pnpm dev`와 `pnpm db:*` 스크립트는 [`wrangler.jsonc`](./wrangler.jsonc)의 D1 binding을 wrangler 로컬 에뮬레이션(`.wrangler/state`)으로 실행합니다.
+
+```bash
+# 로컬 D1에 트래픽 데이터 수집 (테이블은 자동 생성)
+pnpm db:collect
+```
+
+### Development
+
+```bash
+pnpm dev
+```
+
+http://localhost:3000 에서 확인
+
+### 데모 모드
+
+GitHub 토큰이나 수집한 데이터 없이 대시보드를 둘러볼 수 있습니다. 만들어 낸 레포 8개와 90일치 트래픽을 실제 수집과 같은 경로로 D1에 기록하므로, 모든 페이지가 그대로 동작합니다.
+
+```bash
+pnpm db:demo              # 로컬 D1에 데모 데이터 기록
+DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
+```
+
+실제 레포가 이미 수집된 로컬 DB에는 섞이지 않도록 기록을 거부합니다. `.wrangler/state`를 지우고 다시 실행하세요.
+
+배포한 Worker에 `DEMO_MODE=true`를 설정하면 cron이 GitHub 대신 데모 데이터를 수집하고(토큰 불필요) 배너를 표시합니다. 실제 데이터와 섞이지 않도록 데모는 별도 Worker와 D1로 배포하세요.
+
+## Scripts
+
+| Script            | Description                  |
+| ----------------- | ---------------------------- |
+| `pnpm dev`        | 개발 서버 실행               |
+| `pnpm build`      | 프로덕션 빌드                |
+| `pnpm preview`    | 빌드 미리보기                |
+| `pnpm test`       | 테스트 실행                  |
+| `pnpm format`     | Prettier 포맷 적용           |
+| `pnpm db:init`    | 로컬 D1에 마이그레이션 적용  |
+| `pnpm db:collect` | 로컬 D1에 트래픽 데이터 수집 |
+| `pnpm db:demo`    | 로컬 D1에 데모 데이터 기록   |
+
+## Data Collection (Cloudflare Cron)
+
+대시보드 앱과 데이터 수집이 **하나의 Cloudflare Worker**로 배포됩니다. 10분마다 Cloudflare cron 트리거가 실행되면, Nitro 서버 플러그인([`src/nitro/scheduled.ts`](./src/nitro/scheduled.ts))이 그날 아직 수집하지 않은 레포를 일부만 골라 GitHub API에서 트래픽을 가져와 D1에 저장합니다. 그날 치가 끝나면 이후 실행은 아무것도 하지 않습니다.
+
+> GitHub Actions의 `schedule` 트리거는 repo 활동이 60일간 없으면 자동 비활성화됩니다. Cloudflare cron 트리거에는 이 제한이 없습니다.
+
+수집 로직은 [`src/lib/collect-traffic.ts`](./src/lib/collect-traffic.ts)에 있고, cron 플러그인과 CLI 스크립트(`pnpm db:collect`)가 이를 공유합니다. 레포지토리는 기본 6개씩 병렬로 처리하고, 한 레포의 모든 행은 테이블별 multi-row upsert로 묶어 한 번의 D1 batch로 기록합니다.
+
+**나눠서 수집하는 이유:** 한 번의 cron 호출에서 쓸 수 있는 subrequest와 D1 쿼리에 한도가 있습니다([제한 사항](#cloudflare-제한-사항)). 그날 첫 호출이 레포 목록을 가져와 `repositories`에 기록하고, 이후 호출은 그 목록을 읽어 `CRON_BATCH_SIZE`개씩 처리합니다. 처리한 레포는 성공·실패 관계없이 `collection_attempts`에 하루 한 번만 기록되므로, 실패한 레포가 나머지를 막지 않습니다. CLI로 돌리는 `pnpm db:collect`는 Node에 이런 한도가 없어서 한 번에 전부 수집합니다.
+
+수집 대상은 GitHub Traffic API의 네 엔드포인트(views, clones, popular/referrers, popular/paths)입니다. views와 clones는 같은 14일 윈도우를 쓰므로 날짜 기준으로 병합해 `daily_traffic` 한 행에 저장하고, referrers와 paths는 14일 롤링 집계라 수집일 스냅샷으로 `referrers`, `popular_paths`에 남깁니다.
+
+`traffic_totals`에는 GitHub이 함께 내려주는 윈도우 단위 합계를 스냅샷으로 저장합니다. 유니크 방문자는 14일 전체에 걸쳐 중복 제거된 값이라 일별 수치를 더해서는 복원할 수 없기 때문입니다. `repositories`에는 매 실행 시점의 소유 레포 목록을 기록합니다. 트래픽 행은 레포보다 오래 남으므로, 이름이 바뀌거나 삭제된 레포를 걸러내는 기준이 됩니다.
+
+실행 이력은 `collection_runs` 테이블에 수집일 하루당 한 행으로 기록됩니다. 그날 첫 호출이 행을 만들고, 이후 호출마다 성공·실패 레포 수와 `last_batch_at`이 누적되며, 마지막 레포를 처리한 호출이 `finished_at`과 `duration_ms`를 채웁니다. 그래서 `finished_at`이 NULL인 채로 `last_batch_at`이 한참 전인 행은 도중에 멈춘 수집을 뜻합니다. GitHub은 트래픽이 없는 날도 0으로 돌려주기 때문에 이 테이블 없이는 "수집 실패"와 "트래픽 0"을 구분할 수 없습니다.
+
+cron 스케줄과 D1 binding은 [`wrangler.jsonc`](./wrangler.jsonc)에 정의됩니다. Nitro가 빌드 시 생성하는 Worker 설정(`.output/server/wrangler.json`)에 이 파일이 병합됩니다.
+
+### 수집 상태와 실패 알림
+
+GitHub은 트래픽을 14일만 보관하므로, 수집이 조용히 멈추면 그 기간 데이터는 복구할 수 없습니다. 그래서 `collection_runs`를 두 곳에서 읽습니다.
+
+- **대시보드 헤더:** 마지막 수집 시각과 상태(정상, 진행 중, 일부 실패, 실패, 수집 전)를 표시합니다. 공개 페이지이므로 실패한 레포 이름, 오류 메시지, 레포 수는 보여주지 않습니다.
+- **헬스 체크 cron(UTC 06:00):** 최근 실행을 확인하고, 설정된 채널로 알립니다. 채널이 없으면 로그만 남깁니다.
+
+실패로 판단하는 경우는 다음과 같습니다.
+
+| 상태      | 조건                                                                              |
+| --------- | --------------------------------------------------------------------------------- |
+| 실패      | 26시간 넘게 실행이 시작되지 않음, 도중에 멈춤(40분 동안 배치 없음), 오류로 중단됨 |
+| 일부 실패 | 실패한 레포가 있음, 성공한 레포 수가 직전 정상 실행의 절반 미만으로 줄어듦        |
+
+알림 채널은 둘 중 하나 또는 둘 다 쓸 수 있습니다.
+
+- **GitHub 이슈(`ALERT_GITHUB_REPO=owner/name`):** 문제가 생기면 `collection-health` 라벨을 단 이슈를 엽니다. 문제가 계속되는 동안에는 새 이슈 대신 그 이슈에 매일 댓글을 달고, 수집이 정상으로 돌아오면 이슈를 닫습니다. `GITHUB_TOKEN`으로 요청하므로 토큰에 해당 레포의 Issues 쓰기 권한이 있어야 합니다(classic PAT의 `repo` scope면 충분합니다).
+  - 대상 레포가 public이면 private 레포와 공개 여부를 모르는 레포의 이름을 `(private repository)`로 가립니다.
+  - 토큰 주인이 만든 이슈와 댓글이라 GitHub이 본인에게는 알림을 보내지 않습니다. 레포 이슈 목록이나 라벨로 확인하세요.
+- **웹훅(`ALERT_WEBHOOK_URL`):** URL이 Discord(`discord.com`)나 Slack(`hooks.slack.com`)이면 각 형식의 JSON으로, 그 밖의 URL(예: `https://ntfy.sh/<topic>`)이면 plain text로 POST합니다. 문제가 계속되면 매일 한 번씩 보냅니다. 비공개 채널이라는 전제로 레포 이름을 가리지 않습니다.
+
+한 채널이 실패해도 다른 채널은 실행되고, 실패 내용은 Worker 로그에 남습니다. 두 값 모두 `wrangler.jsonc`의 `vars`가 아니라 시크릿으로 등록하세요. `wrangler deploy`는 설정 파일에 없는 일반 변수를 지우지만 시크릿은 유지하므로, fork한 레포의 설정 파일을 upstream과 다르게 유지할 필요가 없습니다.
+
+헬스 체크 cron은 표현식 값으로 구분합니다. 시각을 바꾸려면 `wrangler.jsonc`의 `triggers.crons`와 `src/lib/collection-health.ts`의 `HEALTH_CHECK_CRON`을 함께 바꾸세요. 26시간 기준은 수집이 매일 돈다는 전제입니다.
+
+### 스키마 마이그레이션
+
+스키마 변경은 [`src/lib/schema.ts`](./src/lib/schema.ts)의 `MIGRATIONS`에 버전 순서대로 쌓이고, 적용된 버전은 `schema_migrations` 테이블에 기록됩니다. 배포 단계에서 따로 실행할 명령은 없습니다.
+
+- 대시보드는 Worker isolate마다 첫 쿼리 전에 밀린 마이그레이션을 적용합니다. 새 버전을 배포하면 다음 cron을 기다리지 않고 첫 요청에서 스키마가 맞춰집니다.
+- cron 수집도 시작할 때 같은 과정을 거칩니다.
+- 마이그레이션 하나의 변경과 버전 기록은 한 D1 batch로 실행되므로, 실패하면 함께 롤백되고 다음 시도에서 다시 적용됩니다.
+
+스키마를 바꿀 때는 이미 배포된 마이그레이션을 고치지 말고 다음 버전을 추가하세요. 이미 그 버전을 기록한 배포에서는 다시 실행되지 않습니다.
+
+## Project Structure
+
+```
+├── scripts/
+│   ├── init-db.ts          # 로컬 D1 초기화
+│   ├── collect-traffic.ts  # 로컬 D1 수집 CLI
+│   └── export-turso.ts     # Turso → D1 일회성 이관
+├── src/
+│   ├── components/         # React 컴포넌트
+│   ├── lib/                # 유틸리티, DB 클라이언트, 수집 로직
+│   ├── nitro/              # Nitro 서버 플러그인 (cron 수집)
+│   └── routes/             # 페이지 라우트
+└── wrangler.jsonc          # D1 binding, cron 트리거
+```
+
+## Private 레포
+
+수집기는 토큰으로 접근 가능한 private 레포까지 모두 수집하지만, 대시보드에는 **public 레포만 표시**합니다. 배포된 Worker URL은 누구나 열 수 있기 때문입니다.
+
+private 레포까지 보려면 먼저 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)로 대시보드 접근을 제한한 뒤 `SHOW_PRIVATE_REPOS=true`를 설정하세요.
+
+공개 여부는 `repositories.private`에 기록됩니다. 이 값이 없는 레포(이 컬럼이 추가되기 전에 수집된 레포)는 다음 수집이 끝날 때까지 private으로 취급되어 숨겨집니다.
+
+## 수집 대상
+
+기본값은 토큰 주인이 소유한 레포 중 fork를 뺀 전부입니다. 환경 변수로 바꿀 수 있습니다.
+
+| 변수               | 예시                       | 설명                                                                                  |
+| ------------------ | -------------------------- | ------------------------------------------------------------------------------------- |
+| `GITHUB_ORGS`      | `acme,tools`               | 이 조직들의 레포를 추가로 수집합니다                                                  |
+| `EXCLUDE_REPOS`    | `me/dotfiles,me/*-archive` | 전체 이름(`owner/name`)으로 제외합니다. `*`는 임의의 문자열이고 대소문자를 무시합니다 |
+| `INCLUDE_FORKS`    | `true`                     | fork도 수집합니다                                                                     |
+| `EXCLUDE_ARCHIVED` | `true`                     | archived 레포를 뺍니다(기본은 포함, GitHub이 계속 트래픽을 집계하므로)                |
+
+Traffic API는 레포에 push 권한이 있어야 읽을 수 있습니다. 조직 레포 중 토큰에 push 권한이 없는 레포는 실패로 기록하지 않고 목록에서 빼며, 그날 첫 수집 로그에 `Skipped N without push access`로 남깁니다.
+
+설정은 그날 첫 수집이 레포 목록을 만들 때 읽습니다. 바꾼 설정은 다음 날(UTC) 수집부터 반영됩니다.
+
+### GitHub 토큰
+
+| 용도                                | classic PAT | fine-grained PAT                              |
+| ----------------------------------- | ----------- | --------------------------------------------- |
+| 트래픽 수집                         | `repo`      | Repository permissions > Administration: Read |
+| 실패 알림 이슈(`ALERT_GITHUB_REPO`) | `repo`      | 해당 레포의 Issues: Read and write            |
+
+fine-grained PAT은 resource owner 하나(내 계정 또는 조직 하나)에만 쓸 수 있습니다. 내 레포와 조직 레포(`GITHUB_ORGS`)를 함께 수집하려면 classic PAT을 쓰세요.
+
+## Deployment
+
+앱과 cron이 하나의 Cloudflare Worker로 함께 배포됩니다.
+
+```bash
+# 1. Cloudflare 로그인
+npx wrangler login
+
+# 2. 빌드 + 배포 (D1 데이터베이스와 cron 트리거가 함께 등록됨)
+pnpm run deploy
+
+# 3. 시크릿 등록
+npx wrangler secret put GITHUB_TOKEN
+# (선택) 수집 실패를 기록할 GitHub 레포 (owner/name)
+# npx wrangler secret put ALERT_GITHUB_REPO
+# (선택) 수집 실패 알림을 받을 웹훅 URL (Discord, Slack, ntfy 등)
+# npx wrangler secret put ALERT_WEBHOOK_URL
+# (선택) Cloudflare Access로 보호한 경우에만
+# npx wrangler secret put SHOW_PRIVATE_REPOS
+# (선택) 수집 대상 조정, [수집 대상](#수집-대상) 참고
+# npx wrangler secret put GITHUB_ORGS
+# npx wrangler secret put EXCLUDE_REPOS
+```
+
+`wrangler.jsonc`에는 `database_id`가 없습니다. 첫 배포 때 wrangler가 `github-traffic-dashboard`라는 이름의 D1 데이터베이스를 찾아 연결하고, 없으면 새로 만듭니다. 로컬에서 배포하면 wrangler가 생성된 ID를 `wrangler.jsonc`에 적어줄 수 있는데, 커밋하지 않아도 이후 배포는 계속 동작합니다.
+
+> `pnpm deploy`는 pnpm 내장 명령과 충돌하므로 반드시 `pnpm run deploy`로 실행하세요.
+
+| Script            | Description                           |
+| ----------------- | ------------------------------------- |
+| `pnpm run deploy` | 빌드 후 Cloudflare에 배포 (cron 포함) |
+| `pnpm cf:preview` | 로컬에서 빌드된 Worker 미리보기       |
+| `pnpm cf:tail`    | 배포된 Worker 실시간 로그             |
+
+> 배포 후 Cloudflare 대시보드 > Workers > 해당 Worker > Settings > Triggers에서 cron 등록을 확인할 수 있습니다. `GITHUB_TOKEN` 권한은 [GitHub 토큰](#github-토큰)을 참고하세요.
+
+### Cloudflare 제한 사항
+
+무료 플랜은 cron 호출 한 번에 subrequest 50개, D1 쿼리 50개까지 허용합니다. 수집은 레포 하나에 GitHub 요청 4개와 D1 statement 최대 4개를 쓰고, 그날 첫 호출은 레포 목록 조회에 요청 2개를 더 씁니다. 그래서 한 호출에 `CRON_BATCH_SIZE`(기본 7)개씩만 처리하고, 10분마다 이어서 수집합니다.
+
+`GITHUB_ORGS`를 쓰거나 레포가 100개를 넘으면 목록 조회 요청이 늘어납니다(조직마다, 100개마다 1개씩). 늘어난 요청 4개마다 그날 첫 호출이 처리하는 레포를 하나씩 줄여 한도를 지킵니다. 그래서 목록 조회 자체가 50개에 가까워질 만큼 조직이 많다면 Workers Paid가 필요합니다.
+
+10분 간격이면 하루에 144번 호출되므로 레포 약 1,000개까지 커버합니다. 그보다 많으면 cron 간격을 좁히거나(`wrangler.jsonc`), Workers Paid 플랜에서 `CRON_BATCH_SIZE`를 올리세요. Paid 플랜은 호출당 subrequest 1,000개, D1 쿼리 1,000개까지 허용합니다.
+
+수집 기록은 `collection_attempts`에 남으므로, 호출이 하나 실패해도 다음 호출이 남은 레포부터 이어서 처리합니다.
+
+### Turso에서 옮기기
+
+D1 전환 이전의 Turso 배포에서 옮기는 방법은 [docs/migrate-from-turso.md](./docs/migrate-from-turso.md)를 참고하세요.
+
+## License
+
+MIT
