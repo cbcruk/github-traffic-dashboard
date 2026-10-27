@@ -143,7 +143,14 @@ pnpm db:demo              # write demo data to the local D1
 DEMO_MODE=true pnpm dev   # shows a "Demo data" banner
 ```
 
-`pnpm db:demo` refuses a local database that already holds real repositories; delete `.wrangler/state` to start fresh. A Worker deployed with `DEMO_MODE=true` collects demo data on its cron, needs no token, and shows the banner. Give a demo its own Worker and D1 database so it never mixes with real data.
+`pnpm db:demo` refuses a local database that already holds real repositories; delete `.wrangler/state` to start fresh.
+
+#### Deploying a demo
+
+`pnpm build:demo` builds a demo Worker: it is named `github-traffic-dashboard-demo`, binds its own D1 database (`github-traffic-dashboard-demo`) and sets `DEMO_MODE=true`. It can share a Cloudflare account with your real dashboard without touching its data, and needs no token or secrets. Its cron collects the demo data, so every page fills in within about half an hour of the first deploy.
+
+- **With Workers Builds:** import the same repository a second time, name the Worker `github-traffic-dashboard-demo`, and set the build command to `pnpm run build:demo`.
+- **From your machine:** `pnpm build:demo && npx wrangler deploy`.
 
 ### Scripts
 
@@ -151,6 +158,7 @@ DEMO_MODE=true pnpm dev   # shows a "Demo data" banner
 | ----------------- | --------------------------------- |
 | `pnpm dev`        | Start the dev server              |
 | `pnpm build`      | Build for production              |
+| `pnpm build:demo` | Build the demo Worker             |
 | `pnpm test`       | Run tests                         |
 | `pnpm format`     | Format with Prettier              |
 | `pnpm db:init`    | Apply migrations to the local D1  |

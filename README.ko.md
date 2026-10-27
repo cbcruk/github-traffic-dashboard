@@ -103,7 +103,12 @@ DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
 
 실제 레포가 이미 수집된 로컬 DB에는 섞이지 않도록 기록을 거부합니다. `.wrangler/state`를 지우고 다시 실행하세요.
 
-배포한 Worker에 `DEMO_MODE=true`를 설정하면 cron이 GitHub 대신 데모 데이터를 수집하고(토큰 불필요) 배너를 표시합니다. 실제 데이터와 섞이지 않도록 데모는 별도 Worker와 D1로 배포하세요.
+#### 데모 배포
+
+`pnpm build:demo`는 데모용 Worker를 빌드합니다. Worker 이름은 `github-traffic-dashboard-demo`이고, 별도 D1 데이터베이스(`github-traffic-dashboard-demo`)를 쓰며 `DEMO_MODE=true`가 설정됩니다. 실제 대시보드와 같은 Cloudflare 계정에 배포해도 데이터가 섞이지 않고, 토큰이나 시크릿도 필요 없습니다. cron이 데모 데이터를 수집하므로 첫 배포 후 30분쯤 지나면 모든 페이지가 채워집니다.
+
+- **Workers Builds:** 같은 레포를 한 번 더 import하고, Worker 이름을 `github-traffic-dashboard-demo`로, 빌드 명령을 `pnpm run build:demo`로 지정하세요.
+- **로컬에서:** `pnpm build:demo && npx wrangler deploy`
 
 ## Scripts
 
@@ -111,6 +116,7 @@ DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
 | ----------------- | ---------------------------- |
 | `pnpm dev`        | 개발 서버 실행               |
 | `pnpm build`      | 프로덕션 빌드                |
+| `pnpm build:demo` | 데모 Worker 빌드             |
 | `pnpm preview`    | 빌드 미리보기                |
 | `pnpm test`       | 테스트 실행                  |
 | `pnpm format`     | Prettier 포맷 적용           |
