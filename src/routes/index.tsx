@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { History, Search } from 'lucide-react'
+import { History, Search, Trophy } from 'lucide-react'
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Grid } from '@astryxdesign/core/Grid'
@@ -150,6 +150,12 @@ function Dashboard() {
               <CollectionStatus status={collection} />
             </VStack>
             <HStack gap={2} vAlign="center">
+              <Link href="/top" isStandalone>
+                <HStack gap={1.5} vAlign="center" as="span">
+                  <Icon icon={Trophy} size="sm" />
+                  Top 10
+                </HStack>
+              </Link>
               <Link href="/history" isStandalone>
                 <HStack gap={1.5} vAlign="center" as="span">
                   <Icon icon={History} size="sm" />
