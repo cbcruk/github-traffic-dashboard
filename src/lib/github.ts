@@ -6,12 +6,12 @@ import {
   type CollectionStatus,
 } from './collection-health'
 import { getDb } from './env'
-import type {
-  DailyTraffic,
-  PopularPath,
-  Referrer,
-  RepoTraffic,
-} from './github.types'
+import collectionDatesQuery from '../queries/collection_dates.sql'
+import repoDailyQuery from '../queries/repo_daily.sql'
+import repoPathsQuery from '../queries/repo_paths.sql'
+import repoReferrersQuery from '../queries/repo_referrers.sql'
+import repoSeenQuery from '../queries/repo_seen.sql'
+import type { DailyTraffic, RepoTraffic } from './github.types'
 import { findUncovered, type RepoDetail } from './repo-detail'
 import {
   buildReferrerAnalysis,
@@ -259,17 +259,8 @@ async function loadCollectionDates(
   db: D1Database,
   from: string,
 ): Promise<string[]> {
-  const { results } = await db
-    .prepare(
-      `
-      SELECT date FROM traffic_totals WHERE date >= ?1
-      UNION SELECT date FROM referrers WHERE date >= ?1
-      UNION SELECT date FROM popular_paths WHERE date >= ?1
-    `,
-    )
-    .bind(from)
-    .all<{ date: string }>()
-  return results.map((row) => row.date)
+  const rows = await collectionDatesQuery.run(db, { from })
+  return rows.map((row) => row.date)
 }
 
 /** Days one collection reports: GitHub's 14, or 90 for demo collections. */
@@ -335,54 +326,16 @@ export const getRepoDetail = createServerFn()
     const db = await getDb()
     const { repo } = data
 
-    const seen = await db
-      .prepare(
-        `
-        SELECT first_seen AS firstSeen, last_seen AS lastSeen
-        FROM repositories
-        WHERE repo = ?1 AND repo IN (${visibleReposQuery()})
-      `,
-      )
-      .bind(repo)
-      .first<{ firstSeen: string; lastSeen: string }>()
+    const seen = await repoSeenQuery.run(db, {
+      repo,
+      show_private: process.env.SHOW_PRIVATE_REPOS === 'true' ? 1 : 0,
+    })
     if (!seen) return null
 
-    const [{ results: daily }, referrers, paths] = await Promise.all([
-      db
-        .prepare(
-          `
-          SELECT repo, date, views, visitors, clones,
-                 clone_uniques AS cloneUniques
-          FROM daily_traffic WHERE repo = ?1 ORDER BY date
-        `,
-        )
-        .bind(repo)
-        .all<DailyTraffic>(),
-      // The newest snapshot only: each is already a 14-day aggregate.
-      db
-        .prepare(
-          `
-          SELECT referrer, count, uniques FROM referrers
-          WHERE repo = ?1
-            AND date = (SELECT MAX(date) FROM referrers WHERE repo = ?1)
-          ORDER BY count DESC
-        `,
-        )
-        .bind(repo)
-        .all<Referrer>()
-        .then((r) => r.results),
-      db
-        .prepare(
-          `
-          SELECT path, title, count, uniques FROM popular_paths
-          WHERE repo = ?1
-            AND date = (SELECT MAX(date) FROM popular_paths WHERE repo = ?1)
-          ORDER BY count DESC
-        `,
-        )
-        .bind(repo)
-        .all<PopularPath>()
-        .then((r) => r.results),
+    const [daily, referrers, paths] = await Promise.all([
+      repoDailyQuery.run(db, { repo }),
+      repoReferrersQuery.run(db, { repo }),
+      repoPathsQuery.run(db, { repo }),
     ])
 
     const today = new Date().toISOString().slice(0, 10)
