@@ -127,7 +127,7 @@ If one channel fails, the other still runs, and the failure is logged.
 
 ## Local development
 
-Requires Node.js 20+ and pnpm. No database setup is needed: `pnpm dev` and the `pnpm db:*` scripts use wrangler's local D1 emulation (`.wrangler/state`).
+Requires Node.js 24+ and pnpm. No database setup is needed: `pnpm dev` and the `pnpm db:*` scripts use wrangler's local D1 emulation (`.wrangler/state`).
 
 ```bash
 pnpm install
@@ -154,6 +154,17 @@ DEMO_MODE=true pnpm dev   # shows a "Demo data" banner
 - **With Workers Builds:** import the same repository a second time, name the Worker `github-traffic-dashboard-demo`, and set the build command to `pnpm run build:demo`.
 - **From your machine:** `pnpm build:demo && npx wrangler deploy`.
 
+### Queries and type checking
+
+The dashboard's queries live in [`src/queries`](./src/queries) as `.sql` files, imported by the server functions. [Reylo](https://reylo.dev) infers each query's parameter and row types by preparing it against [`db/schema.sqlite`](./db/schema.sqlite), the empty, fully migrated schema, so a misspelled column or a changed result is a type error. The collector's writes are built in code, as they are batched.
+
+```bash
+pnpm typecheck   # tsc with reylo; needs no database besides db/schema.sqlite
+pnpm db:schema   # rewrite db/schema.sqlite after adding a migration
+```
+
+Type checking uses TypeScript 7.1 (beta). To see query types in VS Code, install the **TypeScript 7** extension (`TypeScriptTeam.native-preview`) and set `"js/ts.experimental.useTsgo": true`; see [Reylo's editor setup](https://reylo.dev/#editors) for others. The build does not type-check and needs no database.
+
 ### Scripts
 
 | Script            | Description                       |
@@ -162,10 +173,12 @@ DEMO_MODE=true pnpm dev   # shows a "Demo data" banner
 | `pnpm build`      | Build for production              |
 | `pnpm build:demo` | Build the demo Worker             |
 | `pnpm test`       | Run tests                         |
+| `pnpm typecheck`  | Type-check, queries included      |
 | `pnpm format`     | Format with Prettier              |
 | `pnpm db:init`    | Apply migrations to the local D1  |
 | `pnpm db:collect` | Collect traffic into the local D1 |
 | `pnpm db:demo`    | Write demo data to the local D1   |
+| `pnpm db:schema`  | Rewrite `db/schema.sqlite`        |
 | `pnpm run deploy` | Build and deploy to Cloudflare    |
 | `pnpm cf:preview` | Preview the built Worker locally  |
 | `pnpm cf:tail`    | Stream the deployed Worker's logs |
@@ -178,7 +191,7 @@ A Cloudflare cron trigger fires every 10 minutes. A Nitro server plugin ([`src/n
 
 **Storage.** Views and clones share GitHub's 14-day window and are merged per day into `daily_traffic`. Referrers and popular paths are 14-day aggregates, stored as snapshots stamped with the collection date. `traffic_totals` keeps GitHub's window totals, since unique visitors are deduplicated across the window and cannot be rebuilt from daily figures. `repositories` records which repositories exist on each collection date, so renamed and deleted ones drop out. `collection_runs` keeps one row per day, which is how the dashboard tells a quiet day from a missed one: GitHub reports both as 0.
 
-**Migrations.** Schema changes are versioned in [`src/lib/schema.ts`](./src/lib/schema.ts) and applied automatically, before the first query of each Worker isolate and at the start of each collection. Add a new version rather than editing a deployed one.
+**Migrations.** Schema changes are versioned in [`src/lib/schema.ts`](./src/lib/schema.ts) and applied automatically, before the first query of each Worker isolate and at the start of each collection. Add a new version rather than editing a deployed one, then run `pnpm db:schema`; a test fails until you do.
 
 The cron schedule and D1 binding are in [`wrangler.jsonc`](./wrangler.jsonc), which Nitro merges into the Worker config it generates at build time. The health check is matched by its cron expression: change `triggers.crons` and `HEALTH_CHECK_CRON` in [`src/lib/collection-health.ts`](./src/lib/collection-health.ts) together.
 
@@ -187,18 +200,20 @@ Moving from the earlier Turso-based version? See [docs/migrate-from-turso.md](./
 ## Project structure
 
 ```
-├── scripts/            # local D1 scripts (init, collect, demo, Turso export)
+├── db/                 # empty schema that queries are typed against
+├── scripts/            # local D1 scripts (init, collect, demo, schema, Turso export)
 ├── src/
 │   ├── components/     # React components
-│   ├── lib/            # collector, queries, schema, comparisons
+│   ├── lib/            # collector, server functions, schema, comparisons
 │   ├── nitro/          # Nitro server plugin (cron)
+│   ├── queries/        # the dashboard's SQL, typed by reylo
 │   └── routes/         # pages
 └── wrangler.jsonc      # D1 binding, cron triggers
 ```
 
 ## Tech stack
 
-[TanStack Start](https://tanstack.com/start) and [Router](https://tanstack.com/router), [Astryx](https://astryx.atmeta.com) UI, [Recharts](https://recharts.org), [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/).
+[TanStack Start](https://tanstack.com/start) and [Router](https://tanstack.com/router), [Astryx](https://astryx.atmeta.com) UI, [Recharts](https://recharts.org), [Reylo](https://reylo.dev), [Cloudflare Workers](https://developers.cloudflare.com/workers/) and [D1](https://developers.cloudflare.com/d1/).
 
 ## License
 

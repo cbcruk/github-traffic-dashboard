@@ -71,18 +71,15 @@ export async function runBatch(
 }
 
 /**
- * Runs a query whose result the caller can live without, returning no rows on failure.
+ * Awaits a query whose result the caller can live without, giving no rows on failure.
  *
  * Supplementary queries go through here so that one failing query (against a
  * table from a migration that could not be applied, say) degrades a section of
  * the page instead of emptying all of it.
  */
-export async function allOrEmpty<T = Record<string, unknown>>(
-  db: D1Database,
-  sql: string,
-): Promise<T[]> {
+export async function orEmpty<T>(rows: Promise<T[]>): Promise<T[]> {
   try {
-    return (await db.prepare(sql).all<T>()).results
+    return await rows
   } catch (error) {
     console.error('Supplementary query failed:', error)
     return []

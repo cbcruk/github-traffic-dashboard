@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
@@ -12,11 +12,13 @@
     "build:demo": "vite build && tsx scripts/configure-demo-worker.ts",
     "preview": "vite preview",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit --runExternalCode",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:init": "tsx scripts/init-db.ts",
     "db:collect": "tsx scripts/collect-traffic.ts",
     "db:demo": "tsx scripts/demo.ts",
+    "db:schema": "tsx scripts/schema-db.ts",
     "deploy": "vite build && wrangler deploy",
     "cf:preview": "vite build && wrangler dev",
     "cf:tail": "wrangler tail",
@@ -36,12 +38,14 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "recharts": "2.15.4",
+    "reylo": "0.6.0",
     "vite-tsconfig-paths": "^6.0.2"
   },
   "devDependencies": {
     "@astryxdesign/cli": "^0.5.2",
     "@cloudflare/workers-types": "^5.20260715.1",
     "@libsql/client": "^0.17.0",
+    "@reylosql/sqlite": "0.6.0",
     "@tanstack/devtools-vite": "^0.3.11",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",
@@ -53,7 +57,7 @@
     "jsdom": "^27.0.0",
     "prettier": "^3.8.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2",
+    "typescript": "7.1.0-beta",
     "vite": "^7.1.7",
     "vitest": "^3.0.5",
     "web-vitals": "^5.1.0",

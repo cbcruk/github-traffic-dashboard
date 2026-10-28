@@ -1,0 +1,3 @@
+# The committed, empty schema (pnpm db:schema) that reylo types
+# src/queries/*.sql against, so type checks and builds need no database.
+direct_url: file:./db/schema.sqlite

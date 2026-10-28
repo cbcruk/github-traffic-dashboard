@@ -4,6 +4,8 @@ import {
   reportProblem,
   resolveProblem,
 } from './health-issue'
+import recentRunsQuery from '../queries/recent_runs.sql'
+import unlistedReposQuery from '../queries/unlisted_repos.sql'
 import { migrateSchema } from './schema'
 
 /**
@@ -135,20 +137,7 @@ export function assessCollection(
 const RECENT_RUNS = 10
 
 export async function loadRecentRuns(db: D1Database): Promise<CollectionRun[]> {
-  const { results } = await db
-    .prepare(
-      `
-      SELECT started_at AS startedAt, last_batch_at AS lastBatchAt,
-             finished_at AS finishedAt, repos,
-             succeeded, failed, failed_repos AS failedRepos, error
-      FROM collection_runs
-      ORDER BY started_at DESC
-      LIMIT ?
-    `,
-    )
-    .bind(RECENT_RUNS)
-    .all<CollectionRun>()
-  return results
+  return recentRunsQuery.run(db, { limit: RECENT_RUNS })
 }
 
 /**
@@ -214,10 +203,8 @@ interface HealthCheckOptions {
 
 /** Repositories not known to be public, which alerts in public places hide. */
 async function loadUnlistedRepos(db: D1Database): Promise<string[]> {
-  const { results } = await db
-    .prepare(`SELECT repo FROM repositories WHERE private IS NOT 0`)
-    .all<{ repo: string }>()
-  return results.map((row) => row.repo)
+  const rows = await unlistedReposQuery.run(db)
+  return rows.map((row) => row.repo)
 }
 
 /**

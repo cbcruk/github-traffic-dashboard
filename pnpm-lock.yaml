@@ -47,9 +47,12 @@ importers:
       recharts:
         specifier: 2.15.4
         version: 2.15.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      reylo:
+        specifier: 0.6.0
+        version: 0.6.0(@reylosql/sqlite@0.6.0)
       vite-tsconfig-paths:
         specifier: ^6.0.2
-        version: 6.0.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0))
+        version: 6.0.4(typescript@7.1.0-beta)(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0))
     devDependencies:
       '@astryxdesign/cli':
         specifier: ^0.5.2
@@ -60,6 +63,9 @@ importers:
       '@libsql/client':
         specifier: ^0.17.0
         version: 0.17.0
+      '@reylosql/sqlite':
+        specifier: 0.6.0
+        version: 0.6.0
       '@tanstack/devtools-vite':
         specifier: ^0.3.11
         version: 0.3.12(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0))
@@ -94,8 +100,8 @@ importers:
         specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
+        specifier: 7.1.0-beta
+        version: 7.1.0-beta
       vite:
         specifier: ^7.1.7
         version: 7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0)
@@ -1323,6 +1329,9 @@ packages:
   '@poppinss/exception@1.2.3':
     resolution: {integrity: sha512-dCED+QRChTVatE9ibtoaxc+WkdzOSjYTKi/+uacHWIsfodVfpsueo3+DKpgU5Px8qXjgmXkSvhXvSCz3fnP9lw==}
 
+  '@reylosql/sqlite@0.6.0':
+    resolution: {integrity: sha512-AKn4IdL9/PJmchJXRQmIZpXCuuLvNdSyLfSjBRXiMAO2h4BlZVJJR+Qvn7WtVqyOyHaxopsLUaiocj8VW1lnWg==}
+
   '@rolldown/pluginutils@1.0.0-beta.40':
     resolution: {integrity: sha512-s3GeJKSQOwBlzdUrj4ISjJj5SfSh+aqn0wjOar4Bx95iV1ETI7F6S/5hLcfAxZ9kXDcyrAkxPlqmd1ZITttf+w==}
 
@@ -1775,6 +1784,132 @@ packages:
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
+  '@typescript/typescript-aix-ppc64@7.1.0-beta':
+    resolution: {integrity: sha512-DXDG+jIWxBHGdoO70tcHON33rCnSzsEZj9P13oyf/r/KEGIo6awsdSNVNjAw0uMwEpqRu75IrgCcW58YcVkZHg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [ppc64]
+    os: [aix]
+
+  '@typescript/typescript-android-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-UZx6PxoQavuvaVTrSf3aw0Oy/J/uJpRylipA0kzc038jMvZXh0UtE8vnQp20FqtdgD5bhXZ0aJrRJyoTSUO58Q==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [android]
+
+  '@typescript/typescript-darwin-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-q7mxblcyX0E7hXsY4k+Q6KWKK5mGmfVq+BDesdTgRVgjodk27aIxER77Zyj9+TgSTlCje8F7+JM6f6hl2BuNdw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@typescript/typescript-darwin-x64@7.1.0-beta':
+    resolution: {integrity: sha512-D5EYqG5Wm/guw9+0j8+Mn1Jbr/gfS/VtFTuoH8PJtFbcqeDaQGMulc7SW8q51QG6Y3wGOGX3nbsTOw6fIKWWAA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@typescript/typescript-freebsd-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-9A0XX0tcnH9qPdolSKKzSjTb93dlB0UEcAJbHYEsrFX2fkFNSum9+dvkQQJ9vLc+7vxHetDPujq9Qe6wx+Xhow==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [freebsd]
+
+  '@typescript/typescript-freebsd-x64@7.1.0-beta':
+    resolution: {integrity: sha512-EDf/dBHfY0TxX3NmUTek0hbffeyZlh3+ls6WQW3ICB8vYxwYLFnzg7wkgEUvl9eRlpiJ/nmc2S8arPMzINJ7rg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@typescript/typescript-linux-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-hNqQBgQ5b5oGqN76QqbAU6CwYhJZ6iOcWc2kPTUs2OentgpxZktETziH6KIyRFJPaiBncognwn2ZLu3DNhHiWw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
+  '@typescript/typescript-linux-arm@7.1.0-beta':
+    resolution: {integrity: sha512-AvN9HmzOQh46G4312ooSgMHhbB7DtnLwg8D9mo324X49B7weMwtJrBG1MxT9IyI8kzDd7YRtW+1hWGun7WG7Qw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@typescript/typescript-linux-loong64@7.1.0-beta':
+    resolution: {integrity: sha512-xbUustlBrFflt2pNEyG5ye+d4WGPc/rfr2xK29MXeobPSw297JqwuKRrvbKM5o3fE/eUM/c+urVm6jQ3IaMVTw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [loong64]
+    os: [linux]
+
+  '@typescript/typescript-linux-mips64el@7.1.0-beta':
+    resolution: {integrity: sha512-fS4/G7/0bXZ3NSq3nBMAXyg65I3tO4S7j08VNQ2g1aNC/qq79gE7Qne1BNjVsjMFfHBVBFjQYoTQCjmVU2iFlg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [mips64el]
+    os: [linux]
+
+  '@typescript/typescript-linux-ppc64@7.1.0-beta':
+    resolution: {integrity: sha512-0upCCxYPX8X6gOwkvfv+Ee7/ufyy7k97mTrGE0e5BxLlnUEa+w+rtgnv2dsKcxFdwdeZYVlZKCqgN/xCBV08+A==}
+    engines: {node: '>=16.20.0'}
+    cpu: [ppc64]
+    os: [linux]
+
+  '@typescript/typescript-linux-riscv64@7.1.0-beta':
+    resolution: {integrity: sha512-0jKU9YRgOPRgiy5V/UWv37kB53PaTpIbwGCbbOMUPPAkrjVRNOIAJaz7Wa7s3H7mdDebX1LopUEPEJR+7Xa7zg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [riscv64]
+    os: [linux]
+
+  '@typescript/typescript-linux-s390x@7.1.0-beta':
+    resolution: {integrity: sha512-j+d04s2kxaPQh6DLPb01sknAQfzsrdSZy15jBRHyLEZoaaQ19dVjbFRlkNVvYwUG7ZdP8+y5b/7RmPxdtHUKdQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [s390x]
+    os: [linux]
+
+  '@typescript/typescript-linux-x64@7.1.0-beta':
+    resolution: {integrity: sha512-kcD51ihf+pnI5KT4uQQYG04OpwznaZYBlIQhDhl8fflFd27NktxXsUeguxZyvUMyWfum7IF2bBS6Jv7ox0AgFQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+
+  '@typescript/typescript-netbsd-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-8W85YyoGK+rgGoSU9jJQUpELbrKcZcbdJk2jPNQ6UKDKI7ryPlPFTrV2jCE5RQuv4Tt96hMDTc33s4YfRrLFBA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [netbsd]
+
+  '@typescript/typescript-netbsd-x64@7.1.0-beta':
+    resolution: {integrity: sha512-iGsTE0ve2PG0AcyZinwAR0LnGEZhu/y4dceS0hZsYCaKdYETvQtvtlNWlmYKempsBr6C7Il7dMXHVk+VFm9u0g==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [netbsd]
+
+  '@typescript/typescript-openbsd-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-Z2FERdHB9fAKI+KGqdWn04O7uNlnB+VYiEm6INE1aZuzzLNd3KBqQ6IpKUJF2ny4GigGU6nVu75XD9tAUODPng==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [openbsd]
+
+  '@typescript/typescript-openbsd-x64@7.1.0-beta':
+    resolution: {integrity: sha512-NVG3qeyCq/rJEOhaRjR3LsWgjrjo5vJW25omVLeHAVnpKIG4pE4cenwwKGR06DiJ1s0QTOymcJeKXMEpsiNBVg==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [openbsd]
+
+  '@typescript/typescript-sunos-x64@7.1.0-beta':
+    resolution: {integrity: sha512-ovAdoWXEn2B5/fyWG69pLU3FWmQwPWOjQV5TFbcxtpnOv+R3g8ySGHl1NYRq7Lb/GYdFDvaGcZ+SiU7iKuiMsA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [sunos]
+
+  '@typescript/typescript-win32-arm64@7.1.0-beta':
+    resolution: {integrity: sha512-lJbo71IEOfL7ZZIZnArRaOLqjn9BAfoSzyUQn0aSjfSpDZL4ru0afUsdBfo6PQEjD6ssdmi0n/RwaPADX6bsvQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@typescript/typescript-win32-x64@7.1.0-beta':
+    resolution: {integrity: sha512-UKcHvbybY2tDTvFW2b1vwiAvDlIRooo69lh8CXWVhOQejcvpM5+IgbiFW9EIwR5Wi5X/v+BdN7gdWbigBuJ3rw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
 
   '@vitejs/plugin-react@5.1.2':
     resolution: {integrity: sha512-EcA07pHJouywpzsoTUqNh5NwGayl2PPVEJKUSinGGSxFGYn+shYbqMGBg6FXDqgXum9Ou/ecb+411ssw8HImJQ==}
@@ -2718,6 +2853,25 @@ packages:
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
+  reylo@0.6.0:
+    resolution: {integrity: sha512-Njt2l+11XWivq+wcfq0NMz5Y5tQoePmv3U5fD/wC95KjGPS1EY6UEx0/js5zhn+ayNiF4Q1Xelixx2iIbh5Ywg==}
+    engines: {node: '>=24'}
+    hasBin: true
+    peerDependencies:
+      '@reylosql/mysql': 0.6.0
+      '@reylosql/postgres': 0.6.0
+      '@reylosql/sqlite': 0.6.0
+      slonik: '>=49.12.0'
+    peerDependenciesMeta:
+      '@reylosql/mysql':
+        optional: true
+      '@reylosql/postgres':
+        optional: true
+      '@reylosql/sqlite':
+        optional: true
+      slonik:
+        optional: true
+
   rollup@4.55.1:
     resolution: {integrity: sha512-wDv/Ht1BNHB4upNbK74s9usvl7hObDnvVzknxqY/E/O3X6rW1U1rV1aENEfJ54eFZDTNo7zv1f5N4edCluH7+A==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
@@ -2902,9 +3056,9 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
-    engines: {node: '>=14.17'}
+  typescript@7.1.0-beta:
+    resolution: {integrity: sha512-cjWjZAJDsmZzsNC5GwHNlW0YPM65jZa5oR0KyQcYX3KSVIfTvtBq//vewISyatKk4OLi5grZjHhIVE9fdrw1UQ==}
+    engines: {node: '>=16.20.0'}
     hasBin: true
 
   ufo@1.6.3:
@@ -4179,6 +4333,8 @@ snapshots:
 
   '@poppinss/exception@1.2.3': {}
 
+  '@reylosql/sqlite@0.6.0': {}
+
   '@rolldown/pluginutils@1.0.0-beta.40': {}
 
   '@rolldown/pluginutils@1.0.0-beta.53': {}
@@ -4697,6 +4853,69 @@ snapshots:
   '@types/ws@8.18.1':
     dependencies:
       '@types/node': 22.19.7
+
+  '@typescript/typescript-aix-ppc64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-android-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-darwin-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-darwin-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-freebsd-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-freebsd-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-arm@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-loong64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-mips64el@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-ppc64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-riscv64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-s390x@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-netbsd-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-netbsd-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-openbsd-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-openbsd-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-sunos-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-win32-arm64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-win32-x64@7.1.0-beta':
+    optional: true
 
   '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0))':
     dependencies:
@@ -5701,6 +5920,10 @@ snapshots:
 
   resolve-pkg-maps@1.0.0: {}
 
+  reylo@0.6.0(@reylosql/sqlite@0.6.0):
+    optionalDependencies:
+      '@reylosql/sqlite': 0.6.0
+
   rollup@4.55.1:
     dependencies:
       '@types/estree': 1.0.8
@@ -5875,9 +6098,9 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  tsconfck@3.1.6(typescript@5.9.3):
+  tsconfck@3.1.6(typescript@7.1.0-beta):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 7.1.0-beta
 
   tslib@2.8.1: {}
 
@@ -5888,7 +6111,29 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  typescript@5.9.3: {}
+  typescript@7.1.0-beta:
+    optionalDependencies:
+      '@typescript/typescript-aix-ppc64': 7.1.0-beta
+      '@typescript/typescript-android-arm64': 7.1.0-beta
+      '@typescript/typescript-darwin-arm64': 7.1.0-beta
+      '@typescript/typescript-darwin-x64': 7.1.0-beta
+      '@typescript/typescript-freebsd-arm64': 7.1.0-beta
+      '@typescript/typescript-freebsd-x64': 7.1.0-beta
+      '@typescript/typescript-linux-arm': 7.1.0-beta
+      '@typescript/typescript-linux-arm64': 7.1.0-beta
+      '@typescript/typescript-linux-loong64': 7.1.0-beta
+      '@typescript/typescript-linux-mips64el': 7.1.0-beta
+      '@typescript/typescript-linux-ppc64': 7.1.0-beta
+      '@typescript/typescript-linux-riscv64': 7.1.0-beta
+      '@typescript/typescript-linux-s390x': 7.1.0-beta
+      '@typescript/typescript-linux-x64': 7.1.0-beta
+      '@typescript/typescript-netbsd-arm64': 7.1.0-beta
+      '@typescript/typescript-netbsd-x64': 7.1.0-beta
+      '@typescript/typescript-openbsd-arm64': 7.1.0-beta
+      '@typescript/typescript-openbsd-x64': 7.1.0-beta
+      '@typescript/typescript-sunos-x64': 7.1.0-beta
+      '@typescript/typescript-win32-arm64': 7.1.0-beta
+      '@typescript/typescript-win32-x64': 7.1.0-beta
 
   ufo@1.6.3: {}
 
@@ -5963,11 +6208,11 @@ snapshots:
       - tsx
       - yaml
 
-  vite-tsconfig-paths@6.0.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0)):
+  vite-tsconfig-paths@6.0.4(typescript@7.1.0-beta)(vite@7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0)):
     dependencies:
       debug: 4.4.3
       globrex: 0.1.2
-      tsconfck: 3.1.6(typescript@5.9.3)
+      tsconfck: 3.1.6(typescript@7.1.0-beta)
     optionalDependencies:
       vite: 7.3.1(@types/node@22.19.7)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.21.0)
     transitivePeerDependencies:

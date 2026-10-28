@@ -173,6 +173,19 @@ export const MIGRATIONS: Migration[] = [
          ON collection_runs(collected_on)`,
     ],
   },
+  {
+    version: 4,
+    name: 'current_repositories',
+    // The repositories the newest collection listed. Traffic rows outlive the
+    // repository they describe, so the dashboard's queries keep only these;
+    // a view, because a query in src/queries is fixed SQL and cannot splice
+    // the condition in.
+    up: () => [
+      `CREATE VIEW IF NOT EXISTS current_repositories AS
+         SELECT repo, private FROM repositories
+         WHERE last_seen = (SELECT MAX(last_seen) FROM repositories)`,
+    ],
+  },
 ]
 
 const TRACKING_TABLE = `CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -1,6 +1,9 @@
 {
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": [".output", ".nitro", ".wrangler", "dist"],
+  "contentMappers": [
+    { "package": "reylo", "extensions": [".sql", ".reylo.yaml", ".reylo.yml"] }
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
@@ -21,7 +24,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
