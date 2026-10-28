@@ -42,6 +42,7 @@ GitHub은 레포지토리 트래픽(views, clones, referrers)을 14일만 보관
 - [TanStack Router](https://tanstack.com/router) - Type-safe routing
 - [Astryx](https://astryx.atmeta.com) - UI components, layout, and theming
 - [Recharts](https://recharts.org) - Charts
+- [Reylo](https://reylo.dev) - `.sql` 쿼리 타입 추론
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/) - 앱 호스팅과 cron 수집
 - [Cloudflare D1](https://developers.cloudflare.com/d1/) - SQLite 데이터베이스
 
@@ -49,7 +50,7 @@ GitHub은 레포지토리 트래픽(views, clones, referrers)을 14일만 보관
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - pnpm
 - Cloudflare 계정 (무료 플랜으로도 동작합니다, [제한 사항](#cloudflare-제한-사항) 참고)
 
@@ -112,6 +113,17 @@ DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
 - **Workers Builds:** 같은 레포를 한 번 더 import하고, Worker 이름을 `github-traffic-dashboard-demo`로, 빌드 명령을 `pnpm run build:demo`로 지정하세요.
 - **로컬에서:** `pnpm build:demo && npx wrangler deploy`
 
+### 쿼리와 타입 체크
+
+대시보드 쿼리는 [`src/queries`](./src/queries)에 `.sql` 파일로 있고 server function이 import합니다. [Reylo](https://reylo.dev)가 데이터 없이 마이그레이션만 적용한 스키마 [`db/schema.sqlite`](./db/schema.sqlite)에 각 쿼리를 prepare해서 파라미터와 결과 타입을 추론하므로, 컬럼 오타나 결과 모양이 바뀐 것을 타입 체크에서 잡습니다. 수집기의 쓰기는 D1 batch로 묶어야 해서 코드로 만듭니다.
+
+```bash
+pnpm typecheck   # reylo를 포함한 tsc. db/schema.sqlite 말고는 DB가 필요 없음
+pnpm db:schema   # 마이그레이션을 추가한 뒤 db/schema.sqlite 재생성
+```
+
+타입 체크는 TypeScript 7.1(베타)을 씁니다. VS Code에서 쿼리 타입을 보려면 **TypeScript 7** 확장(`TypeScriptTeam.native-preview`)을 설치하고 `"js/ts.experimental.useTsgo": true`를 설정하세요. 다른 에디터는 [Reylo 문서](https://reylo.dev/#editors)를 참고하세요. 빌드는 타입 체크를 하지 않으므로 DB가 필요 없습니다.
+
 ## Scripts
 
 | Script            | Description                  |
@@ -121,10 +133,12 @@ DEMO_MODE=true pnpm dev   # 페이지 상단에 "Demo data" 배너 표시
 | `pnpm build:demo` | 데모 Worker 빌드             |
 | `pnpm preview`    | 빌드 미리보기                |
 | `pnpm test`       | 테스트 실행                  |
+| `pnpm typecheck`  | 쿼리를 포함한 타입 체크      |
 | `pnpm format`     | Prettier 포맷 적용           |
 | `pnpm db:init`    | 로컬 D1에 마이그레이션 적용  |
 | `pnpm db:collect` | 로컬 D1에 트래픽 데이터 수집 |
 | `pnpm db:demo`    | 로컬 D1에 데모 데이터 기록   |
+| `pnpm db:schema`  | `db/schema.sqlite` 재생성    |
 
 ## Data Collection (Cloudflare Cron)
 
@@ -177,19 +191,24 @@ GitHub은 트래픽을 14일만 보관하므로, 수집이 조용히 멈추면 �
 - cron 수집도 시작할 때 같은 과정을 거칩니다.
 - 마이그레이션 하나의 변경과 버전 기록은 한 D1 batch로 실행되므로, 실패하면 함께 롤백되고 다음 시도에서 다시 적용됩니다.
 
-스키마를 바꿀 때는 이미 배포된 마이그레이션을 고치지 말고 다음 버전을 추가하세요. 이미 그 버전을 기록한 배포에서는 다시 실행되지 않습니다.
+스키마를 바꿀 때는 이미 배포된 마이그레이션을 고치지 말고 다음 버전을 추가하세요. 이미 그 버전을 기록한 배포에서는 다시 실행되지 않습니다. 추가한 뒤에는 `pnpm db:schema`로 `db/schema.sqlite`를 다시 만드세요. 그 전까지는 테스트가 실패합니다.
 
 ## Project Structure
 
 ```
+├── db/
+│   └── schema.sqlite       # 쿼리 타입 추론용 빈 스키마
 ├── scripts/
 │   ├── init-db.ts          # 로컬 D1 초기화
 │   ├── collect-traffic.ts  # 로컬 D1 수집 CLI
+│   ├── demo.ts             # 로컬 D1에 데모 데이터 기록
+│   ├── schema-db.ts        # db/schema.sqlite 생성
 │   └── export-turso.ts     # Turso → D1 일회성 이관
 ├── src/
 │   ├── components/         # React 컴포넌트
-│   ├── lib/                # 유틸리티, DB 클라이언트, 수집 로직
+│   ├── lib/                # 유틸리티, server function, 수집 로직
 │   ├── nitro/              # Nitro 서버 플러그인 (cron 수집)
+│   ├── queries/            # 대시보드 SQL (reylo로 타입 추론)
 │   └── routes/             # 페이지 라우트
 └── wrangler.jsonc          # D1 binding, cron 트리거
 ```

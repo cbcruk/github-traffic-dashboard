@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { allOrEmpty } from './db'
+import { orEmpty } from './db'
 import {
   assessCollection,
   loadRecentRuns,
@@ -7,6 +7,15 @@ import {
 } from './collection-health'
 import { getDb } from './env'
 import collectionDatesQuery from '../queries/collection_dates.sql'
+import dashboardDailyQuery from '../queries/dashboard_daily.sql'
+import historyDailyQuery from '../queries/history_daily.sql'
+import lastFinishedCollectionQuery from '../queries/last_finished_collection.sql'
+import latestPathsQuery from '../queries/latest_paths.sql'
+import latestReferrersQuery from '../queries/latest_referrers.sql'
+import latestTotalsQuery from '../queries/latest_totals.sql'
+import periodDailyQuery from '../queries/period_daily.sql'
+import referrerSnapshotsQuery from '../queries/referrer_snapshots.sql'
+import referrerTrendQuery from '../queries/referrer_trend.sql'
 import repoDailyQuery from '../queries/repo_daily.sql'
 import repoPathsQuery from '../queries/repo_paths.sql'
 import repoReferrersQuery from '../queries/repo_referrers.sql'
@@ -17,8 +26,6 @@ import {
   buildReferrerAnalysis,
   windowEnds,
   type ReferrerAnalysis,
-  type SnapshotRow,
-  type TrendRow,
 } from './referrers'
 import { DEMO_HISTORY_DAYS } from './demo-github'
 import { dateRangeOptions } from './history-search'
@@ -26,7 +33,6 @@ import {
   GITHUB_WINDOW_DAYS,
   addDays,
   buildPreviousPeriods,
-  type DailyRow,
   type PreviousPeriods,
 } from './period-comparison'
 
@@ -36,8 +42,10 @@ export interface PublicCollectionStatus {
 }
 
 /**
- * Repos the dashboard may show: owned as of the newest collection that listed
- * any, and public unless the deployment sets `SHOW_PRIVATE_REPOS=true`.
+ * The `:show_private` parameter of the queries that pick the repos the
+ * dashboard may show: owned as of the newest collection that listed any (the
+ * `current_repositories` view), and public unless the deployment sets
+ * `SHOW_PRIVATE_REPOS=true`.
  *
  * Traffic rows outlive the repository they describe, so a renamed or deleted
  * repo keeps showing up in historical queries. Anchoring on `MAX(last_seen)`
@@ -47,14 +55,8 @@ export interface PublicCollectionStatus {
  * been recorded yet, and a schema that could not be migrated makes the query
  * error, so the page renders empty instead of exposing private repos.
  */
-function visibleReposQuery(): string {
-  const showPrivate = process.env.SHOW_PRIVATE_REPOS === 'true'
-
-  return `
-    SELECT repo FROM repositories
-    WHERE last_seen = (SELECT MAX(last_seen) FROM repositories)
-      ${showPrivate ? '' : 'AND private = 0'}
-  `
+function showPrivate(): 0 | 1 {
+  return process.env.SHOW_PRIVATE_REPOS === 'true' ? 1 : 0
 }
 
 export const getAllReposTraffic = createServerFn().handler(
@@ -62,31 +64,20 @@ export const getAllReposTraffic = createServerFn().handler(
     try {
       const db = await getDb()
 
-      // GitHub's window is 14 days including today, so it reaches back 13.
-      const { results: dailyRows } = await db
-        .prepare(
-          `
-        SELECT
-          repo,
-          date,
-          views,
-          visitors,
-          clones,
-          clone_uniques
-        FROM daily_traffic
-        WHERE date >= date('now', '-13 days')
-          AND repo IN (${visibleReposQuery()})
-        ORDER BY repo, date
-      `,
-        )
-        .all()
+      const dailyRows = await dashboardDailyQuery.run(db, {
+        show_private: showPrivate(),
+      })
 
       const repoMap = new Map<string, RepoTraffic>()
 
-      for (const row of dailyRows) {
-        const repo = row.repo as string
-        const date = row.date as string
-
+      for (const {
+        repo,
+        date,
+        views,
+        visitors,
+        clones,
+        cloneUniques,
+      } of dailyRows) {
         if (!repoMap.has(repo)) {
           repoMap.set(repo, {
             repo,
@@ -98,11 +89,6 @@ export const getAllReposTraffic = createServerFn().handler(
         }
 
         const traffic = repoMap.get(repo)!
-        const views = row.views as number
-        const visitors = row.visitors as number
-        const clones = row.clones as number
-        const cloneUniques = row.clone_uniques as number
-
         traffic.views.count += views
         traffic.views.views.push({
           timestamp: `${date}T00:00:00Z`,
@@ -127,79 +113,29 @@ export const getAllReposTraffic = createServerFn().handler(
       // Window-level aggregates as GitHub reported them. Counts stay as the
       // daily sums above so the numbers match the chart beside them; only the
       // uniques, which are not additive, come from the snapshot.
-      const totalsRows = await allOrEmpty(
-        db,
-        `
-        SELECT t.repo, t.view_uniques, t.clone_uniques
-        FROM traffic_totals t
-        INNER JOIN (
-          SELECT repo, MAX(date) AS max_date
-          FROM traffic_totals
-          GROUP BY repo
-        ) latest ON t.repo = latest.repo AND t.date = latest.max_date
-      `,
-      )
+      const totalsRows = await orEmpty(latestTotalsQuery.run(db))
 
       for (const row of totalsRows) {
-        const traffic = repoMap.get(row.repo as string)
+        const traffic = repoMap.get(row.repo)
         if (traffic) {
-          traffic.views.uniques = row.view_uniques as number
-          traffic.clones.uniques = row.clone_uniques as number
+          traffic.views.uniques = row.viewUniques
+          traffic.clones.uniques = row.cloneUniques
         }
       }
 
       // GitHub's referrers and paths endpoints already return a rolling 14-day
       // aggregate, so each collected row is a full snapshot — summing multiple
       // days would multiply the counts. Use only the most recent per repo.
-      const referrerRows = await allOrEmpty(
-        db,
-        `
-        SELECT r.repo, r.referrer, r.count, r.uniques
-        FROM referrers r
-        INNER JOIN (
-          SELECT repo, MAX(date) AS max_date
-          FROM referrers
-          GROUP BY repo
-        ) latest ON r.repo = latest.repo AND r.date = latest.max_date
-        ORDER BY r.count DESC
-      `,
-      )
+      const referrerRows = await orEmpty(latestReferrersQuery.run(db))
 
-      for (const row of referrerRows) {
-        const traffic = repoMap.get(row.repo as string)
-        if (traffic) {
-          traffic.referrers.push({
-            referrer: row.referrer as string,
-            count: row.count as number,
-            uniques: row.uniques as number,
-          })
-        }
+      for (const { repo, ...referrer } of referrerRows) {
+        repoMap.get(repo)?.referrers.push(referrer)
       }
 
-      const pathRows = await allOrEmpty(
-        db,
-        `
-        SELECT p.repo, p.path, p.title, p.count, p.uniques
-        FROM popular_paths p
-        INNER JOIN (
-          SELECT repo, MAX(date) AS max_date
-          FROM popular_paths
-          GROUP BY repo
-        ) latest ON p.repo = latest.repo AND p.date = latest.max_date
-        ORDER BY p.count DESC
-      `,
-      )
+      const pathRows = await orEmpty(latestPathsQuery.run(db))
 
-      for (const row of pathRows) {
-        const traffic = repoMap.get(row.repo as string)
-        if (traffic) {
-          traffic.paths.push({
-            path: row.path as string,
-            title: row.title as string,
-            count: row.count as number,
-            uniques: row.uniques as number,
-          })
-        }
+      for (const { repo, ...path } of pathRows) {
+        repoMap.get(repo)?.paths.push(path)
       }
 
       return Array.from(repoMap.values())
@@ -215,26 +151,7 @@ export const getHistoricalTraffic = createServerFn().handler(
     try {
       const db = await getDb()
 
-      const { results } = await db
-        .prepare(
-          `
-        SELECT repo, date, views, visitors, clones, clone_uniques as cloneUniques
-        FROM daily_traffic
-        WHERE date >= date('now', '-90 days')
-          AND repo IN (${visibleReposQuery()})
-        ORDER BY date DESC
-      `,
-        )
-        .all()
-
-      return results.map((row) => ({
-        repo: row.repo as string,
-        date: row.date as string,
-        views: row.views as number,
-        visitors: row.visitors as number,
-        clones: row.clones as number,
-        cloneUniques: row.cloneUniques as number,
-      }))
+      return await historyDailyQuery.run(db, { show_private: showPrivate() })
     } catch (error) {
       console.error('Failed to fetch historical traffic:', error)
       return []
@@ -289,17 +206,11 @@ export const getPreviousPeriods = createServerFn().handler(
       const from = addDays(today, 1 - 2 * Math.max(...COMPARED_RANGES))
       const to = addDays(today, -Math.min(...COMPARED_RANGES))
 
-      const { results: rows } = await db
-        .prepare(
-          `
-        SELECT repo, date, views, visitors, clones
-        FROM daily_traffic
-        WHERE date BETWEEN ?1 AND ?2
-          AND repo IN (${visibleReposQuery()})
-      `,
-        )
-        .bind(from, to)
-        .all<DailyRow>()
+      const rows = await periodDailyQuery.run(db, {
+        from,
+        to,
+        show_private: showPrivate(),
+      })
 
       return buildPreviousPeriods(
         rows,
@@ -328,7 +239,7 @@ export const getRepoDetail = createServerFn()
 
     const seen = await repoSeenQuery.run(db, {
       repo,
-      show_private: process.env.SHOW_PRIVATE_REPOS === 'true' ? 1 : 0,
+      show_private: showPrivate(),
     })
     if (!seen) return null
 
@@ -366,12 +277,7 @@ export const getReferrerAnalysis = createServerFn()
     const db = await getDb()
     const { days } = data
 
-    const finished = await db
-      .prepare(
-        `SELECT MAX(collected_on) AS date FROM collection_runs
-         WHERE finished_at IS NOT NULL`,
-      )
-      .first<string | null>('date')
+    const finished = (await lastFinishedCollectionQuery.run(db)).date
     const lookback = addDays(new Date().toISOString().slice(0, 10), -2 * days)
     const collectionDates = await loadCollectionDates(db, lookback)
     const anchor = finished ?? collectionDates.sort().at(-1) ?? null
@@ -387,28 +293,16 @@ export const getReferrerAnalysis = createServerFn()
     }
 
     const ends = windowEnds(anchor, days)
-    const [{ results: snapshots }, { results: trendRows }] = await Promise.all([
-      db
-        .prepare(
-          `
-          SELECT repo, date, referrer, count, uniques FROM referrers
-          WHERE date IN (${ends.map(() => '?').join(', ')})
-            AND repo IN (${visibleReposQuery()})
-        `,
-        )
-        .bind(...ends)
-        .all<SnapshotRow>(),
-      db
-        .prepare(
-          `
-          SELECT date, referrer, SUM(count) AS count FROM referrers
-          WHERE date BETWEEN ?1 AND ?2
-            AND repo IN (${visibleReposQuery()})
-          GROUP BY date, referrer
-        `,
-        )
-        .bind(addDays(anchor, 1 - days), anchor)
-        .all<TrendRow>(),
+    const [snapshots, trendRows] = await Promise.all([
+      referrerSnapshotsQuery.run(db, {
+        dates: ends,
+        show_private: showPrivate(),
+      }),
+      referrerTrendQuery.run(db, {
+        from: addDays(anchor, 1 - days),
+        to: anchor,
+        show_private: showPrivate(),
+      }),
     ])
 
     return buildReferrerAnalysis({
